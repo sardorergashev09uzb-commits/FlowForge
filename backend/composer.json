@@ -1,0 +1,26 @@
+{
+    "name": "flowforge/backend",
+    "description": "FlowForge Multi-Tenant Enterprise SaaS — Yii2 REST API Backend",
+    "type": "project",
+    "license": "proprietary",
+    "minimum-stability": "stable",
+    "require": {
+        "php": ">=8.1.0",
+        "yiisoft/yii2": "~2.0.50"
+    },
+    "config": {
+        "process-timeout": 1800,
+        "fxp-asset": {
+            "enabled": false
+        },
+        "allow-plugins": {
+            "yiisoft/yii2-composer": true
+        }
+    },
+    "repositories": [
+        {
+            "type": "composer",
+            "url": "https://asset-packagist.org"
+        }
+    ]
+}

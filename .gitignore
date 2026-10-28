@@ -1,0 +1,30 @@
+# Dependencies
+/backend/vendor/
+/frontend/node_modules/
+/frontend/dist/
+
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+/backend/.env
+/frontend/.env
+
+# Yii2 Runtime, Logs, Cache & Local SQLite Database
+/backend/runtime/*
+!/backend/runtime/.gitkeep
+/backend/web/assets/*
+!/backend/web/assets/.gitkeep
+/backend/web/uploads/tasks/*
+!/backend/web/uploads/tasks/.gitkeep
+
+# IDE & OS files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+*.log
+*.tsbuildinfo
+npm-debug.log*
