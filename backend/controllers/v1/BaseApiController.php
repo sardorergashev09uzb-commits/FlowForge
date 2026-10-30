@@ -31,7 +31,8 @@ abstract class BaseApiController extends Controller
             return true;
         }
 
-        $authHeader = Yii::$app->request->headers->get('Authorization');
+        $authHeader = Yii::$app->request->headers->get('Authorization')
+            ?: ($_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? null);
         if (!$authHeader || !preg_match('/^Bearer\s+(.*?)$/i', $authHeader, $matches)) {
             throw new UnauthorizedHttpException('Avtorizatsiya talab etiladi (Bearer token topilmadi).');
         }

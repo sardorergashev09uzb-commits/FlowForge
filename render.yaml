@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: flowforge-enterprise
+    runtime: docker
+    plan: free
+    autoDeploy: true
+    envVars:
+      - key: APP_ENV
+        value: prod
+      - key: APP_DEBUG
+        value: "false"
+      - key: COOKIE_VALIDATION_KEY
+        generateValue: true
+      - key: JWT_SECRET
+        generateValue: true

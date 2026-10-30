@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  flowforge:
+    build: .
+    container_name: flowforge-enterprise
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - APP_ENV=prod
+      - APP_DEBUG=false
+      - PORT=8080
+    volumes:
+      - flowforge_runtime:/var/www/flowforge/backend/runtime
+      - flowforge_uploads:/var/www/flowforge/backend/web/uploads
+
+volumes:
+  flowforge_runtime:
+  flowforge_uploads:

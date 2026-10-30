@@ -1,0 +1,21 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # 1. Pass Authorization header to PHP (required for JWT Bearer tokens on cPanel/Apache)
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # 2. Serve existing static files and directories directly
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # 3. Route /api/* requests to Yii2 REST API (index.php)
+    RewriteRule ^api/ index.php [L]
+
+    # 4. Route all other requests to React SPA index.html (if present) or index.php
+    RewriteCond %{DOCUMENT_ROOT}/index.html -f
+    RewriteRule ^ index.html [L]
+
+    RewriteRule . index.php [L]
+</IfModule>
