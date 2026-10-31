@@ -273,6 +273,10 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
       task.due_at &&
       task.due_at.slice(0, 10) < new Date().toISOString().slice(0, 10);
 
+    const totalChecks = task.subtasks_summary.total + task.checklists_summary.total;
+    const doneChecks = task.subtasks_summary.done + task.checklists_summary.done;
+    const checkPct = totalChecks > 0 ? Math.round((doneChecks / totalChecks) * 100) : null;
+
     return (
       <div
         key={task.id}
@@ -284,24 +288,24 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
           handleDropOnColumn(statusId, task.id, swimlaneExtra);
         }}
         onClick={() => openTaskDrawer(task.id)}
-        className={`p-3.5 rounded-xl bg-slate-950/90 hover:bg-slate-950 border border-slate-800/90 hover:border-indigo-500/50 cursor-grab active:cursor-grabbing shadow-sm transition group ${
-          draggedTaskId === task.id ? 'opacity-40' : ''
+        className={`p-4 rounded-2xl bg-[#131826] hover:bg-[#171d2e] border border-white/[0.08] hover:border-indigo-500/50 cursor-grab active:cursor-grabbing shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all duration-150 group ${
+          draggedTaskId === task.id ? 'opacity-40 scale-95' : ''
         }`}
       >
         {/* Top Row: Task Key, Milestone/Blocker & Priority */}
         <div className="flex items-center justify-between gap-2 mb-2">
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] font-mono font-bold text-indigo-400">
+            <span className="px-2 py-0.5 rounded-md bg-indigo-500/15 border border-indigo-500/25 text-[10px] font-mono font-bold text-indigo-300">
               {task.task_key}
             </span>
             {task.is_milestone && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-semibold">
+              <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 font-semibold">
                 ★ Milestone
               </span>
             )}
             {task.unresolved_blockers_count > 0 && (
               <span
-                className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 font-semibold"
+                className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-md bg-rose-500/20 text-rose-300 font-semibold"
                 title="Bloker vazifa hal qilinmagan"
               >
                 <Lock className="w-2.5 h-2.5" /> Blocked
@@ -312,20 +316,21 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
         </div>
 
         {/* Title */}
-        <h4 className="text-xs font-semibold text-slate-100 group-hover:text-white leading-snug mb-2.5">
+        <h4 className="text-[13px] font-bold text-slate-100 group-hover:text-white leading-snug mb-2.5">
           {task.title}
         </h4>
 
         {/* Labels */}
         {task.labels.length > 0 && (
-          <div className="flex flex-wrap gap-1 mb-2.5">
+          <div className="flex flex-wrap gap-1.5 mb-3">
             {task.labels.map((lbl) => (
               <span
                 key={lbl.id}
-                className="text-[10px] px-2 py-0.5 rounded-md font-medium"
+                className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
                 style={{
                   backgroundColor: `${lbl.color}22`,
                   color: lbl.color,
+                  border: `1px solid ${lbl.color}40`,
                 }}
               >
                 {lbl.name}
@@ -334,8 +339,26 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
           </div>
         )}
 
+        {/* Mini Progress Bar if Subtasks or Checklists exist */}
+        {checkPct !== null && (
+          <div className="mb-3 space-y-1">
+            <div className="flex items-center justify-between text-[10px] text-slate-400">
+              <span>Jarayon</span>
+              <span className="font-mono font-semibold text-slate-300">
+                {doneChecks}/{totalChecks} ({checkPct}%)
+              </span>
+            </div>
+            <div className="w-full h-1.5 rounded-full bg-slate-950 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-emerald-400"
+                style={{ width: `${checkPct}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Footer Badges: Subtasks, Checklists, Comments, Due Date & Assignee */}
-        <div className="flex items-center justify-between pt-2 border-t border-slate-800/70 text-[11px] text-slate-400">
+        <div className="flex items-center justify-between pt-2.5 border-t border-white/[0.06] text-[11px] text-slate-400">
           <div className="flex items-center gap-2.5">
             {task.subtasks_summary.total > 0 && (
               <span className="flex items-center gap-1" title="Subtasklar">
@@ -357,8 +380,10 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
             )}
             {task.due_at && (
               <span
-                className={`font-mono text-[10px] ${
-                  isOverdue ? 'text-rose-400 font-bold' : 'text-slate-400'
+                className={`font-mono text-[10px] px-1.5 py-0.5 rounded ${
+                  isOverdue
+                    ? 'bg-rose-500/20 text-rose-300 font-bold'
+                    : 'bg-white/[0.04] text-slate-300'
                 }`}
               >
                 {task.due_at.slice(5, 10)}
@@ -368,13 +393,13 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
 
           <div className="flex items-center gap-1.5">
             {task.story_points !== null && (
-              <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-[10px] font-mono text-slate-300">
+              <span className="px-1.5 py-0.5 rounded-md bg-white/[0.05] border border-white/[0.08] text-[10px] font-mono text-slate-300">
                 {task.story_points}p
               </span>
             )}
             {task.assignee ? (
               <div
-                className="w-6 h-6 rounded-full bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center text-[10px] font-bold text-indigo-200"
+                className="w-6 h-6 rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-[10px] font-bold text-white shadow"
                 title={`Mas’ul: ${task.assignee.full_name}`}
               >
                 {task.assignee.full_name
@@ -385,7 +410,7 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
               </div>
             ) : (
               <div
-                className="w-6 h-6 rounded-full bg-slate-900 border border-dashed border-slate-700 flex items-center justify-center text-[10px] text-slate-500"
+                className="w-6 h-6 rounded-full bg-white/[0.04] border border-dashed border-slate-700 flex items-center justify-center text-[10px] text-slate-500"
                 title="Tayinlanmagan"
               >
                 ?
@@ -750,12 +775,13 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
                     }}
                     onDragLeave={() => setDragOverStatusId(null)}
                     onDrop={() => handleDropOnColumn(st.id)}
-                    className={`w-80 flex flex-col rounded-2xl bg-slate-900/75 border transition ${
+                    style={{ borderTopColor: st.color, borderTopWidth: '3px' }}
+                    className={`w-80 flex flex-col rounded-2xl bg-[#0e121c]/95 border transition shadow-xl ${
                       dragOverStatusId === st.id
                         ? 'border-indigo-500 bg-indigo-950/20'
                         : isOverWip
                         ? 'border-rose-500/60'
-                        : 'border-slate-800/90'
+                        : 'border-white/[0.07]'
                     }`}
                   >
                     {/* Column Header */}

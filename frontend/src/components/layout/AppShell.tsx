@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
-  Layers,
   Home,
   Bell,
   CheckSquare,
@@ -14,10 +13,9 @@ import {
   Plus,
   ChevronRight,
   ChevronDown,
+  ChevronLeft,
   Folder,
   Star,
-  PanelLeftClose,
-  PanelLeftOpen,
   Building2,
   User as UserIcon,
   Shield,
@@ -37,6 +35,13 @@ import {
   ListFilter,
   Kanban,
   LayoutDashboard,
+  Menu,
+  Check,
+  Globe,
+  Sliders,
+  Activity,
+  Layers,
+  Rocket,
 } from 'lucide-react';
 import { api, setStoredToken } from '../../lib/api';
 import { useAppStore, type ProjectTab, type SettingsTab } from '../../store/useAppStore';
@@ -54,9 +59,13 @@ interface AppShellProps {
   onLogout: () => void;
 }
 
+type SidebarDrillLevel = 'root' | 'space' | 'project' | 'settings';
+type AvatarMenuDrill = 'root' | 'status' | 'workspace' | 'density' | 'timezone';
+
 export const AppShell: React.FC<AppShellProps> = ({ onLogout }) => {
   const {
     user,
+    setUser,
     workspaces,
     activeWorkspaceId,
     setActiveWorkspaceId,
@@ -88,13 +97,53 @@ export const AppShell: React.FC<AppShellProps> = ({ onLogout }) => {
   const [labels, setLabels] = useState<Label[]>([]);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  // Expanded state for nested tree nodes
-  const [expandedSpaces, setExpandedSpaces] = useState<Record<number, boolean>>({});
+  // Single Unified Sidebar Drill-Down State (YouTube Studio style)
+  const [sidebarDrill, setSidebarDrill] = useState<SidebarDrillLevel>('root');
+  const [selectedSpaceId, setSelectedSpaceId] = useState<number | null>(null);
   const [expandedFolders, setExpandedFolders] = useState<Record<number, boolean>>({});
-  const [wsDropdownOpen, setWsDropdownOpen] = useState(false);
+
+  // Top-Right Popovers (YouTube-style "+ Create" & Multi-level Avatar Menu)
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
+  const [avatarMenuDrill, setAvatarMenuDrill] = useState<AvatarMenuDrill>('root');
+
+  const createMenuRef = useRef<HTMLDivElement>(null);
+  const avatarMenuRef = useRef<HTMLDivElement>(null);
 
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId) || workspaces[0];
   const currentProject = hierarchy?.all_projects.find((p) => p.id === activeProjectId) || null;
+  const currentSpace =
+    hierarchy?.spaces.find((s) => s.id === selectedSpaceId) ||
+    hierarchy?.spaces.find((s) => s.id === currentProject?.space_id) ||
+    null;
+
+  // Synchronize sidebar drill state with active section
+  useEffect(() => {
+    if (railSection === 'settings') {
+      setSidebarDrill('settings');
+    } else if (railSection === 'spaces' && activeProjectId) {
+      setSidebarDrill('project');
+    } else if (
+      ['pulse', 'inbox', 'my_work', 'docs', 'timesheets', 'reports'].includes(railSection)
+    ) {
+      setSidebarDrill('root');
+    }
+  }, [railSection, activeProjectId]);
+
+  // Close popovers on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (createMenuRef.current && !createMenuRef.current.contains(e.target as Node)) {
+        setCreateMenuOpen(false);
+      }
+      if (avatarMenuRef.current && !avatarMenuRef.current.contains(e.target as Node)) {
+        setAvatarMenuOpen(false);
+        setAvatarMenuDrill('root');
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const refreshAllWorkspaceData = async () => {
     try {
@@ -114,19 +163,14 @@ export const AppShell: React.FC<AppShellProps> = ({ onLogout }) => {
       setLabels(lblRes.labels || []);
       setRefreshTrigger((n) => n + 1);
 
-      // Expand all spaces & folders by default on first load
-      const spMap: Record<number, boolean> = {};
       const flMap: Record<number, boolean> = {};
       (treeRes.spaces || []).forEach((s: any) => {
-        spMap[s.id] = true;
         (s.folders || []).forEach((f: any) => {
           flMap[f.id] = true;
         });
       });
-      setExpandedSpaces((prev) => ({ ...spMap, ...prev }));
       setExpandedFolders((prev) => ({ ...flMap, ...prev }));
 
-      // If in 'spaces' mode and no project selected yet, select first project automatically
       if (!useAppStore.getState().activeProjectId && treeRes.all_projects?.length > 0) {
         useAppStore.setState({ activeProjectId: treeRes.all_projects[0].id });
       }
@@ -161,16 +205,31 @@ export const AppShell: React.FC<AppShellProps> = ({ onLogout }) => {
     }
   };
 
-  const PROJECT_TABS: Array<{ id: ProjectTab; label: string; icon: any }> = [
-    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-    { id: 'board', label: 'Kanban Board', icon: Kanban },
-    { id: 'list', label: 'Jadval (List)', icon: ListFilter },
-    { id: 'calendar', label: 'Kalendar', icon: Calendar },
-    { id: 'timeline', label: 'Timeline (Gantt)', icon: GitMerge },
-    { id: 'sprints', label: 'Sprints', icon: Sparkles },
-    { id: 'docs', label: 'Docs & Wiki', icon: FileText },
-    { id: 'time', label: 'Vaqt (Time)', icon: Clock },
-    { id: 'settings', label: 'Sozlamalar', icon: Settings },
+  const handleQuickProfileUpdate = async (patch: Record<string, any>, toastMsg: string) => {
+    if (!user) return;
+    try {
+      const res = await api.updateProfile({
+        full_name: user.profile.full_name,
+        username: user.username,
+        ...patch,
+      });
+      setUser(res.user);
+      addToast({ type: 'success', title: toastMsg });
+    } catch (err: any) {
+      addToast({ type: 'error', title: 'Xatolik', message: err.message });
+    }
+  };
+
+  const PROJECT_TABS: Array<{ id: ProjectTab; label: string; sub: string; icon: any }> = [
+    { id: 'overview', label: 'Umumiy Pasport', sub: 'Overview & KPI', icon: LayoutDashboard },
+    { id: 'board', label: 'Kanban Doskasi', sub: 'Ustunlar & Swimlanes', icon: Kanban },
+    { id: 'list', label: 'Jadval Ro‘yxat', sub: 'Ommaviy amallar', icon: ListFilter },
+    { id: 'calendar', label: 'Kalendar', sub: 'Muddatlar setkasi', icon: Calendar },
+    { id: 'timeline', label: 'Gantt Timeline', sub: 'Vaqt chizig‘i', icon: GitMerge },
+    { id: 'sprints', label: 'Sprintlar', sub: 'Agile sikllar', icon: Sparkles },
+    { id: 'docs', label: 'Loyiha Wiki', sub: 'Hujjatlar bazasi', icon: FileText },
+    { id: 'time', label: 'Vaqt Sarfi', sub: 'Soatlar hisoboti', icon: Clock },
+    { id: 'settings', label: 'Loyiha Sozlamalari', sub: 'Statuslar & Arxiv', icon: Settings },
   ];
 
   const SETTINGS_MENU: Array<{
@@ -199,265 +258,577 @@ export const AppShell: React.FC<AppShellProps> = ({ onLogout }) => {
     },
   ];
 
-  const availabilityColors: Record<string, string> = {
-    available: 'bg-emerald-500',
-    focusing: 'bg-indigo-500',
-    busy: 'bg-rose-500',
-    vacation: 'bg-amber-500',
-    sick: 'bg-orange-500',
+  const availabilityConfig: Record<string, { label: string; dot: string }> = {
+    available: { label: 'Ishda (Available)', dot: 'bg-emerald-500 shadow-[0_0_8px_#10b981]' },
+    focusing: { label: 'Diqqat markazida (Focusing)', dot: 'bg-indigo-500 shadow-[0_0_8px_#6366f1]' },
+    busy: { label: 'Band / Uchrashuvda (Busy)', dot: 'bg-rose-500 shadow-[0_0_8px_#f43f5e]' },
+    vacation: { label: 'Ta’tilda (Vacation)', dot: 'bg-amber-500 shadow-[0_0_8px_#f59e0b]' },
+    sick: { label: 'Betob (Sick Leave)', dot: 'bg-orange-500 shadow-[0_0_8px_#f97316]' },
   };
 
+  const currentAvail =
+    availabilityConfig[user?.profile?.availability_status || 'available'] ||
+    availabilityConfig.available;
+
   return (
-    <div className="h-screen w-screen flex bg-slate-950 text-slate-100 overflow-hidden select-none">
+    <div className="h-screen w-screen flex flex-col bg-[#090b10] text-slate-100 overflow-hidden select-none">
       {/* =====================================================================
-          LAYER 1: LEFT PRIMARY GLOBAL RAIL (Icon Bar + Workspace Switcher)
+          TOP YOUTUBE-STYLE GLOBAL NAVBAR (Hamburger + Brand + Pill Search + Create + Nested Avatar Menu)
          ===================================================================== */}
-      <aside className="w-16 bg-slate-950 border-r border-slate-800/90 flex flex-col items-center justify-between py-3 shrink-0 z-30">
-        <div className="flex flex-col items-center gap-3 w-full">
-          {/* Workspace Switcher Button */}
-          <div className="relative">
+      <header className="h-14 px-4 bg-[#0c0f17]/95 backdrop-blur-xl border-b border-white/[0.07] flex items-center justify-between gap-4 shrink-0 z-40">
+        {/* Left: Hamburger ☰ + Logo + Active Workspace Badge */}
+        <div className="flex items-center gap-3 min-w-0">
+          <button
+            onClick={toggleSecondarySidebar}
+            className="w-9 h-9 rounded-full hover:bg-white/[0.08] flex items-center justify-center text-slate-300 hover:text-white transition"
+            title="Menyuni yig‘ish / yoyish"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+
+          <div
+            onClick={() => {
+              navigateRail('pulse');
+              setSidebarDrill('root');
+            }}
+            className="flex items-center gap-2.5 cursor-pointer group"
+          >
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/25 group-hover:scale-105 transition">
+              <Layers className="w-4 h-4 text-white" />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="font-extrabold text-sm tracking-tight text-white">FlowForge</span>
+              <span className="hidden sm:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/[0.06] border border-white/[0.08] text-[11px] font-medium text-slate-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
+                {activeWorkspace?.name || 'Workspace'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Center: YouTube-style Rounded Search Pill (Ctrl+K) */}
+        <div className="flex-1 max-w-xl mx-auto hidden md:block">
+          <button
+            onClick={() => setCommandOpen(true)}
+            className="w-full h-9 px-4 rounded-full bg-[#121622] hover:bg-[#161b29] border border-white/[0.09] hover:border-indigo-500/40 flex items-center justify-between text-xs text-slate-400 transition group shadow-inner"
+          >
+            <div className="flex items-center gap-2.5">
+              <Search className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-400 transition" />
+              <span>Vazifa (FF-101), loyiha, Wiki hujjat yoki a’zoni qidiring...</span>
+            </div>
+            <kbd className="px-2 py-0.5 rounded-full bg-white/[0.06] border border-white/[0.08] text-[10px] font-mono text-slate-400">
+              Ctrl + K
+            </kbd>
+          </button>
+        </div>
+
+        {/* Right: Active Timer + "+ Yaratish" Dropdown + Inbox Bell + Multi-Level Avatar Popover */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          {activeTimer && (
+            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-rose-500/15 border border-rose-500/40 text-xs">
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+              <span
+                onClick={() => openTaskDrawer(activeTimer.taskId)}
+                className="font-mono font-bold text-rose-300 cursor-pointer"
+              >
+                {activeTimer.taskKey}
+              </span>
+              <button
+                onClick={handleStopGlobalTimer}
+                className="px-2 py-0.5 rounded-full bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-semibold flex items-center gap-1"
+              >
+                <Square className="w-2.5 h-2.5 fill-current" /> Stop
+              </button>
+            </div>
+          )}
+
+          {/* YouTube-style "+ Yaratish" Pill Dropdown */}
+          <div className="relative" ref={createMenuRef}>
             <button
-              onClick={() => setWsDropdownOpen(!wsDropdownOpen)}
-              className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center font-bold text-sm text-white shadow-lg shadow-indigo-600/25 hover:scale-105 transition"
-              title={`Workspace: ${activeWorkspace?.name || 'FlowForge'}`}
+              onClick={() => setCreateMenuOpen((v) => !v)}
+              className="h-9 px-3.5 rounded-full bg-white/[0.07] hover:bg-white/[0.12] border border-white/[0.09] flex items-center gap-1.5 text-xs font-semibold text-white transition"
             >
-              {activeWorkspace?.name?.slice(0, 2).toUpperCase() || 'FF'}
+              <Plus className="w-4 h-4 text-indigo-400" />
+              <span>Yaratish</span>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
             </button>
 
-            {wsDropdownOpen && (
-              <div className="absolute left-14 top-0 w-72 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-2 z-50">
-                <div className="px-3 py-2 border-b border-slate-800 mb-1">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    Mening Workspacelarim ({workspaces.length})
+            {createMenuOpen && (
+              <div className="absolute right-0 mt-2 w-60 rounded-2xl bg-[#141824] border border-white/[0.1] shadow-2xl py-2 z-50 animate-popover">
+                <div className="px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Tezkor Yaratish
+                </div>
+                <button
+                  onClick={() => {
+                    setCreateMenuOpen(false);
+                    openModal('create_task');
+                  }}
+                  className="w-full px-3.5 py-2.5 hover:bg-white/[0.06] flex items-center gap-3 text-left text-xs text-slate-200"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
+                    <CheckSquare className="w-4 h-4" />
                   </div>
-                </div>
-                <div className="space-y-1 max-h-60 overflow-y-auto">
-                  {workspaces.map((ws) => (
-                    <button
-                      key={ws.id}
-                      onClick={() => {
-                        setWsDropdownOpen(false);
-                        setActiveWorkspaceId(ws.id);
-                      }}
-                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-left text-xs transition ${
-                        ws.id === activeWorkspaceId
-                          ? 'bg-indigo-600 text-white font-semibold'
-                          : 'text-slate-300 hover:bg-slate-800'
-                      }`}
-                    >
-                      <div className="truncate">
-                        <div>{ws.name}</div>
-                        <div className="text-[10px] opacity-75 font-mono">
-                          /{ws.slug} • {ws.my_role.toUpperCase()}
-                        </div>
-                      </div>
-                      {ws.id === activeWorkspaceId && <CheckCircle2 className="w-4 h-4 shrink-0" />}
-                    </button>
-                  ))}
-                </div>
-                <div className="pt-2 mt-1 border-t border-slate-800">
-                  <button
-                    onClick={() => {
-                      setWsDropdownOpen(false);
-                      openModal('create_workspace');
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-indigo-400 hover:bg-slate-800"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Yangi Workspace Yaratish</span>
-                  </button>
-                </div>
+                  <div>
+                    <div className="font-semibold text-white">Yangi Vazifa</div>
+                    <div className="text-[10px] text-slate-400">Loyiha va mas’ulga biriktirish</div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setCreateMenuOpen(false);
+                    openModal('create_project');
+                  }}
+                  className="w-full px-3.5 py-2.5 hover:bg-white/[0.06] flex items-center gap-3 text-left text-xs text-slate-200"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                    <Rocket className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="font-semibold text-white">Yangi Loyiha</div>
+                    <div className="text-[10px] text-slate-400">Kanban, Timeline va Sprintlar</div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setCreateMenuOpen(false);
+                    openModal('create_space');
+                  }}
+                  className="w-full px-3.5 py-2.5 hover:bg-white/[0.06] flex items-center gap-3 text-left text-xs text-slate-200"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                    <FolderKanban className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="font-semibold text-white">Yangi Space (Bo‘lim)</div>
+                    <div className="text-[10px] text-slate-400">Departament yoki yo‘nalish</div>
+                  </div>
+                </button>
+
+                <div className="my-1 border-t border-white/[0.07]" />
+
+                <button
+                  onClick={() => {
+                    setCreateMenuOpen(false);
+                    openModal('create_workspace');
+                  }}
+                  className="w-full px-3.5 py-2.5 hover:bg-white/[0.06] flex items-center gap-3 text-left text-xs text-slate-200"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-violet-500/20 text-violet-400 flex items-center justify-center">
+                    <Building2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="font-semibold text-white">Yangi Workspace</div>
+                    <div className="text-[10px] text-slate-400">Alohida kompaniya muhiti</div>
+                  </div>
+                </button>
               </div>
             )}
           </div>
 
-          <div className="w-8 h-px bg-slate-800" />
-
-          {/* Main Rail Icons */}
-          {[
-            { id: 'pulse', label: 'Pulse (Bosh sahifa)', icon: Home },
-            { id: 'inbox', label: 'Inbox (Bildirishnomalar)', icon: Bell, badge: unreadNotificationsCount },
-            { id: 'my_work', label: 'Mening Ishim (My Work)', icon: CheckSquare },
-            { id: 'spaces', label: 'Spaces & Loyihalar', icon: FolderKanban },
-            { id: 'docs', label: 'Docs & Wiki Markazi', icon: FileText },
-            { id: 'timesheets', label: 'Time Sheets (Vaqt)', icon: Clock },
-            { id: 'reports', label: 'Analitika & Workload', icon: BarChart3 },
-          ].map((item) => {
-            const Icon = item.icon;
-            const active = railSection === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => navigateRail(item.id as any)}
-                title={item.label}
-                className={`relative w-10 h-10 rounded-xl flex items-center justify-center transition ${
-                  active
-                    ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/40'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-900'
-                }`}
-              >
-                <Icon className="w-5 h-5" />
-                {item.badge ? (
-                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-[10px] font-bold text-white flex items-center justify-center">
-                    {item.badge}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Bottom Rail: Settings, Profile & Logout */}
-        <div className="flex flex-col items-center gap-3">
+          {/* Notifications Bell */}
           <button
-            onClick={() => openSettings('my_profile')}
-            title="Profil va Workspace Sozlamalari"
-            className={`w-10 h-10 rounded-xl flex items-center justify-center transition ${
-              railSection === 'settings'
-                ? 'bg-indigo-600 text-white'
-                : 'text-slate-400 hover:text-white hover:bg-slate-900'
-            }`}
-          >
-            <Settings className="w-5 h-5" />
-          </button>
-
-          {/* User Avatar with Live Availability Dot */}
-          <button
-            onClick={() => openSettings('my_profile')}
-            title={`${user?.profile?.full_name} (${user?.profile?.availability_status})`}
-            className="relative w-9 h-9 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold text-indigo-300"
-          >
-            {user?.profile?.full_name
-              ?.split(' ')
-              .map((n) => n[0])
-              .join('')
-              .slice(0, 2) || 'U'}
-            <span
-              className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-slate-950 ${
-                availabilityColors[user?.profile?.availability_status || 'available'] || 'bg-emerald-500'
-              }`}
-            />
-          </button>
-
-          <button
-            onClick={async () => {
-              try {
-                await api.logout();
-              } catch {
-                // ignore
-              }
-              setStoredToken(null);
-              useAppStore.getState().resetState();
-              onLogout();
+            onClick={() => {
+              navigateRail('inbox');
+              setSidebarDrill('root');
             }}
-            title="Tizimdan chiqish (Logout)"
-            className="w-9 h-9 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 flex items-center justify-center transition"
+            className="relative w-9 h-9 rounded-full hover:bg-white/[0.08] flex items-center justify-center text-slate-300 hover:text-white transition"
+            title="Inbox va Bildirishnomalar"
           >
-            <LogOut className="w-4 h-4" />
+            <Bell className="w-4 h-4" />
+            {unreadNotificationsCount > 0 && (
+              <span className="absolute top-0.5 right-0.5 min-w-[17px] h-[17px] px-1 rounded-full bg-rose-500 text-[10px] font-bold text-white flex items-center justify-center shadow">
+                {unreadNotificationsCount}
+              </span>
+            )}
           </button>
-        </div>
-      </aside>
 
-      {/* =====================================================================
-          LAYER 2: CONTEXTUAL SECONDARY SIDEBAR (Hierarchical Tree OR Settings Menu)
-         ===================================================================== */}
-      {isSecondarySidebarOpen && (
-        <aside className="w-68 bg-slate-900/95 border-r border-slate-800/90 flex flex-col justify-between shrink-0 z-20">
-          {railSection === 'settings' ? (
-            /* SETTINGS MODE SIDEBAR */
-            <div className="flex flex-col h-full">
-              <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-                <div>
-                  <div className="text-xs font-bold text-white">Boshqaruv Markazi</div>
-                  <div className="text-[11px] text-slate-400">Profil & Workspace</div>
-                </div>
-                <button
-                  onClick={() => navigateRail('spaces')}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-200"
-                >
-                  <ArrowLeft className="w-3 h-3" /> Orqaga
-                </button>
+          {/* YouTube-Style Multi-Level Nested Profile Popover */}
+          <div className="relative" ref={avatarMenuRef}>
+            <button
+              onClick={() => {
+                setAvatarMenuOpen((v) => !v);
+                setAvatarMenuDrill('root');
+              }}
+              className="relative w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 p-[2px] hover:scale-105 transition"
+              title="Hisob va Ichma-ich Sozlamalar Menyusi"
+            >
+              <div className="w-full h-full rounded-full bg-[#0c0f17] flex items-center justify-center text-xs font-bold text-white">
+                {user?.profile?.full_name
+                  ?.split(' ')
+                  .map((n) => n[0])
+                  .join('')
+                  .slice(0, 2) || 'U'}
               </div>
+              <span
+                className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#0c0f17] ${currentAvail.dot}`}
+              />
+            </button>
 
-              <div className="flex-1 overflow-y-auto p-3 space-y-5">
-                {SETTINGS_MENU.map((grp) => (
-                  <div key={grp.group}>
-                    <div className="px-2.5 mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                      {grp.group}
+            {avatarMenuOpen && (
+              <div className="absolute right-0 mt-2 w-80 rounded-2xl bg-[#141824] border border-white/[0.1] shadow-2xl overflow-hidden z-50 animate-popover">
+                {/* LEVEL 0: ROOT ACCOUNT MENU */}
+                {avatarMenuDrill === 'root' && (
+                  <div className="divide-y divide-white/[0.07]">
+                    {/* User Header */}
+                    <div className="p-4 flex items-start gap-3 bg-white/[0.02]">
+                      <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-sm font-bold text-white shrink-0">
+                        {user?.profile?.full_name
+                          ?.split(' ')
+                          .map((n) => n[0])
+                          .join('')
+                          .slice(0, 2) || 'U'}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-bold text-white truncate">
+                          {user?.profile?.full_name}
+                        </div>
+                        <div className="text-xs text-slate-400 truncate">
+                          @{user?.username} • {user?.profile?.job_title || 'Member'}
+                        </div>
+                        <button
+                          onClick={() => {
+                            setAvatarMenuOpen(false);
+                            openSettings('my_profile');
+                          }}
+                          className="mt-1.5 text-xs font-semibold text-indigo-400 hover:text-indigo-300"
+                        >
+                          Shaxsiy profilni boshqarish ›
+                        </button>
+                      </div>
                     </div>
-                    <div className="space-y-1">
-                      {grp.items.map((item) => {
-                        const Icon = item.icon;
-                        const active = settingsTab === item.id;
+
+                    {/* Nested Drill-Down Triggers (YouTube Style) */}
+                    <div className="py-1.5">
+                      <button
+                        onClick={() => setAvatarMenuDrill('workspace')}
+                        className="w-full px-4 py-2.5 hover:bg-white/[0.06] flex items-center justify-between text-xs text-slate-200"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <Building2 className="w-4 h-4 text-indigo-400 shrink-0" />
+                          <div className="text-left truncate">
+                            <div className="text-slate-400 text-[10px]">Joriy Workspace</div>
+                            <div className="font-semibold text-white truncate">
+                              {activeWorkspace?.name} ({activeWorkspace?.my_role.toUpperCase()})
+                            </div>
+                          </div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                      </button>
+
+                      <button
+                        onClick={() => setAvatarMenuDrill('status')}
+                        className="w-full px-4 py-2.5 hover:bg-white/[0.06] flex items-center justify-between text-xs text-slate-200"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Activity className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <div className="text-left">
+                            <div className="text-slate-400 text-[10px]">Ish holati (Status)</div>
+                            <div className="font-semibold text-white">{currentAvail.label}</div>
+                          </div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-400" />
+                      </button>
+
+                      <button
+                        onClick={() => setAvatarMenuDrill('density')}
+                        className="w-full px-4 py-2.5 hover:bg-white/[0.06] flex items-center justify-between text-xs text-slate-200"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Sliders className="w-4 h-4 text-amber-400 shrink-0" />
+                          <div className="text-left">
+                            <div className="text-slate-400 text-[10px]">Interfeys Zichligi</div>
+                            <div className="font-semibold text-white capitalize">
+                              {user?.profile?.ui_density || 'comfortable'}
+                            </div>
+                          </div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-400" />
+                      </button>
+
+                      <button
+                        onClick={() => setAvatarMenuDrill('timezone')}
+                        className="w-full px-4 py-2.5 hover:bg-white/[0.06] flex items-center justify-between text-xs text-slate-200"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Globe className="w-4 h-4 text-sky-400 shrink-0" />
+                          <div className="text-left">
+                            <div className="text-slate-400 text-[10px]">Vaqt mintaqasi</div>
+                            <div className="font-semibold text-white">
+                              {user?.profile?.timezone || 'Asia/Tashkent'}
+                            </div>
+                          </div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-400" />
+                      </button>
+                    </div>
+
+                    {/* Direct Links to Studio Settings */}
+                    <div className="py-1.5">
+                      <button
+                        onClick={() => {
+                          setAvatarMenuOpen(false);
+                          openSettings('ws_general');
+                        }}
+                        className="w-full px-4 py-2 hover:bg-white/[0.06] flex items-center gap-3 text-xs text-slate-200"
+                      >
+                        <Settings className="w-4 h-4 text-slate-400" />
+                        <span>Boshqaruv va Sozlamalar Studiyasi</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setAvatarMenuOpen(false);
+                          openSettings('security_sessions');
+                        }}
+                        className="w-full px-4 py-2 hover:bg-white/[0.06] flex items-center gap-3 text-xs text-slate-200"
+                      >
+                        <Shield className="w-4 h-4 text-slate-400" />
+                        <span>Xavfsizlik va Faol Qurilmalar</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setAvatarMenuOpen(false);
+                          openSettings('ws_trash');
+                        }}
+                        className="w-full px-4 py-2 hover:bg-white/[0.06] flex items-center gap-3 text-xs text-slate-200"
+                      >
+                        <Trash2 className="w-4 h-4 text-slate-400" />
+                        <span>Savat (Recycle Bin)</span>
+                      </button>
+                    </div>
+
+                    {/* Logout */}
+                    <div className="py-1.5">
+                      <button
+                        onClick={async () => {
+                          setAvatarMenuOpen(false);
+                          try {
+                            await api.logout();
+                          } catch {
+                            // ignore
+                          }
+                          setStoredToken(null);
+                          useAppStore.getState().resetState();
+                          onLogout();
+                        }}
+                        className="w-full px-4 py-2 hover:bg-rose-500/10 flex items-center gap-3 text-xs font-semibold text-rose-400"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        <span>Tizimdan chiqish</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* SUB-MENU 1: WORKSPACE SWITCHER DRILL-DOWN */}
+                {avatarMenuDrill === 'workspace' && (
+                  <div className="animate-drill-in">
+                    <div className="p-3 border-b border-white/[0.07] flex items-center gap-2">
+                      <button
+                        onClick={() => setAvatarMenuDrill('root')}
+                        className="p-1.5 rounded-full hover:bg-white/[0.08] text-slate-300"
+                      >
+                        <ArrowLeft className="w-4 h-4" />
+                      </button>
+                      <span className="text-xs font-bold text-white">Workspace almashtirish</span>
+                    </div>
+                    <div className="p-2 space-y-1 max-h-64 overflow-y-auto">
+                      {workspaces.map((ws) => (
+                        <button
+                          key={ws.id}
+                          onClick={() => {
+                            setActiveWorkspaceId(ws.id);
+                            setAvatarMenuOpen(false);
+                            setAvatarMenuDrill('root');
+                          }}
+                          className={`w-full px-3 py-2.5 rounded-xl flex items-center justify-between text-xs transition ${
+                            ws.id === activeWorkspaceId
+                              ? 'bg-indigo-600/20 border border-indigo-500/40 text-white'
+                              : 'hover:bg-white/[0.06] text-slate-300'
+                          }`}
+                        >
+                          <div className="text-left truncate">
+                            <div className="font-bold">{ws.name}</div>
+                            <div className="text-[10px] text-slate-400 font-mono">
+                              /{ws.slug} • {ws.my_role.toUpperCase()}
+                            </div>
+                          </div>
+                          {ws.id === activeWorkspaceId && (
+                            <Check className="w-4 h-4 text-indigo-400 shrink-0" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="p-2 border-t border-white/[0.07]">
+                      <button
+                        onClick={() => {
+                          setAvatarMenuOpen(false);
+                          openModal('create_workspace');
+                        }}
+                        className="w-full px-3 py-2 rounded-xl hover:bg-white/[0.06] flex items-center gap-2 text-xs font-semibold text-indigo-400"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Yangi Workspace yaratish</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* SUB-MENU 2: AVAILABILITY STATUS DRILL-DOWN */}
+                {avatarMenuDrill === 'status' && (
+                  <div className="animate-drill-in">
+                    <div className="p-3 border-b border-white/[0.07] flex items-center gap-2">
+                      <button
+                        onClick={() => setAvatarMenuDrill('root')}
+                        className="p-1.5 rounded-full hover:bg-white/[0.08] text-slate-300"
+                      >
+                        <ArrowLeft className="w-4 h-4" />
+                      </button>
+                      <span className="text-xs font-bold text-white">Ish holatini tanlash</span>
+                    </div>
+                    <div className="p-2 space-y-1">
+                      {Object.entries(availabilityConfig).map(([key, cfg]) => {
+                        const active = (user?.profile?.availability_status || 'available') === key;
                         return (
                           <button
-                            key={item.id}
-                            onClick={() => setSettingsTab(item.id)}
-                            className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium transition ${
-                              active
-                                ? 'bg-indigo-600 text-white shadow'
-                                : 'text-slate-300 hover:bg-slate-800/80'
+                            key={key}
+                            onClick={async () => {
+                              await handleQuickProfileUpdate(
+                                { availability_status: key },
+                                `Ish holatingiz "${cfg.label}" ga o‘zgartirildi`
+                              );
+                              setAvatarMenuDrill('root');
+                            }}
+                            className={`w-full px-3 py-2.5 rounded-xl flex items-center justify-between text-xs ${
+                              active ? 'bg-white/[0.08] text-white font-semibold' : 'text-slate-300 hover:bg-white/[0.05]'
                             }`}
                           >
-                            <Icon className="w-4 h-4 shrink-0" />
-                            <span className="truncate">{item.label}</span>
+                            <div className="flex items-center gap-2.5">
+                              <span className={`w-2.5 h-2.5 rounded-full ${cfg.dot}`} />
+                              <span>{cfg.label}</span>
+                            </div>
+                            {active && <Check className="w-4 h-4 text-indigo-400" />}
                           </button>
                         );
                       })}
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            /* WORKSPACE HIERARCHY TREE SIDEBAR (Spaces -> Folders -> Projects) */
-            <div className="flex flex-col h-full">
-              {/* Workspace Title & Search Trigger */}
-              <div className="p-3.5 border-b border-slate-800 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <div className="min-w-0">
-                    <div className="text-sm font-bold text-white truncate">
-                      {activeWorkspace?.name || 'Workspace'}
+                )}
+
+                {/* SUB-MENU 3: UI DENSITY DRILL-DOWN */}
+                {avatarMenuDrill === 'density' && (
+                  <div className="animate-drill-in">
+                    <div className="p-3 border-b border-white/[0.07] flex items-center gap-2">
+                      <button
+                        onClick={() => setAvatarMenuDrill('root')}
+                        className="p-1.5 rounded-full hover:bg-white/[0.08] text-slate-300"
+                      >
+                        <ArrowLeft className="w-4 h-4" />
+                      </button>
+                      <span className="text-xs font-bold text-white">Interfeys zichligi</span>
                     </div>
-                    <div className="text-[11px] text-indigo-400 font-medium uppercase">
-                      Rol: {activeWorkspace?.my_role}
+                    <div className="p-2 space-y-1">
+                      {[
+                        { id: 'comfortable', label: 'Comfortable (Keng va qulay)' },
+                        { id: 'compact', label: 'Compact (Zich ma’lumotlar rejimi)' },
+                      ].map((opt) => {
+                        const active = (user?.profile?.ui_density || 'comfortable') === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            onClick={async () => {
+                              await handleQuickProfileUpdate(
+                                { ui_density: opt.id },
+                                `Interfeys zichligi: ${opt.label}`
+                              );
+                              setAvatarMenuDrill('root');
+                            }}
+                            className={`w-full px-3 py-2.5 rounded-xl flex items-center justify-between text-xs ${
+                              active ? 'bg-white/[0.08] text-white font-semibold' : 'text-slate-300 hover:bg-white/[0.05]'
+                            }`}
+                          >
+                            <span>{opt.label}</span>
+                            {active && <Check className="w-4 h-4 text-indigo-400" />}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
-                  <button
-                    onClick={toggleSecondarySidebar}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
-                    title="Menyuni yig‘ish"
-                  >
-                    <PanelLeftClose className="w-4 h-4" />
-                  </button>
-                </div>
+                )}
 
-                {/* Ctrl+K Command Palette Button */}
-                <button
-                  onClick={() => setCommandOpen(true)}
-                  className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 text-xs text-slate-400 transition"
-                >
-                  <div className="flex items-center gap-2">
-                    <Search className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>Qidiruv & Buyruqlar...</span>
+                {/* SUB-MENU 4: TIMEZONE DRILL-DOWN */}
+                {avatarMenuDrill === 'timezone' && (
+                  <div className="animate-drill-in">
+                    <div className="p-3 border-b border-white/[0.07] flex items-center gap-2">
+                      <button
+                        onClick={() => setAvatarMenuDrill('root')}
+                        className="p-1.5 rounded-full hover:bg-white/[0.08] text-slate-300"
+                      >
+                        <ArrowLeft className="w-4 h-4" />
+                      </button>
+                      <span className="text-xs font-bold text-white">Vaqt mintaqasini tanlash</span>
+                    </div>
+                    <div className="p-2 space-y-1">
+                      {[
+                        'Asia/Tashkent',
+                        'Asia/Samarkand',
+                        'Europe/London',
+                        'America/New_York',
+                      ].map((tz) => {
+                        const active = (user?.profile?.timezone || 'Asia/Tashkent') === tz;
+                        return (
+                          <button
+                            key={tz}
+                            onClick={async () => {
+                              await handleQuickProfileUpdate(
+                                { timezone: tz },
+                                `Vaqt mintaqasi: ${tz}`
+                              );
+                              setAvatarMenuDrill('root');
+                            }}
+                            className={`w-full px-3 py-2.5 rounded-xl flex items-center justify-between text-xs ${
+                              active ? 'bg-white/[0.08] text-white font-semibold' : 'text-slate-300 hover:bg-white/[0.05]'
+                            }`}
+                          >
+                            <span>{tz}</span>
+                            {active && <Check className="w-4 h-4 text-indigo-400" />}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400">
-                    Ctrl+K
-                  </kbd>
-                </button>
+                )}
               </div>
+            )}
+          </div>
+        </div>
+      </header>
 
-              {/* Scrollable Hierarchy Tree */}
-              <div className="flex-1 overflow-y-auto p-3 space-y-5">
-                {/* Quick Global Views */}
+      {/* =====================================================================
+          BODY CONTAINER: SINGLE UNIFIED SIDEBAR (WITH NESTED DRILL-DOWN) + MAIN VIEWPORT
+         ===================================================================== */}
+      <div className="flex-1 flex min-h-0 overflow-hidden">
+        {isSecondarySidebarOpen ? (
+          /* EXPANDED SINGLE UNIFIED SIDEBAR (268px) WITH YOUTUBE STUDIO DRILL-DOWN */
+          <aside className="w-[268px] bg-[#0c0f17] border-r border-white/[0.07] flex flex-col justify-between shrink-0 z-20 overflow-hidden">
+            {/* DRILL MODE 1: ROOT MAIN MENU */}
+            {sidebarDrill === 'root' && (
+              <div className="flex-1 overflow-y-auto p-3 space-y-5 animate-drill-back">
+                {/* Primary Global Navigation */}
                 <div className="space-y-1">
                   {[
-                    { id: 'pulse', label: 'Pulse Dashboard', icon: Home },
-                    { id: 'inbox', label: 'Inbox & @Mentions', icon: Bell, badge: unreadNotificationsCount },
+                    { id: 'pulse', label: 'Bosh sahifa (Studio)', icon: Home },
+                    {
+                      id: 'inbox',
+                      label: 'Inbox & Xabarlar',
+                      icon: Bell,
+                      badge: unreadNotificationsCount,
+                    },
                     { id: 'my_work', label: 'Mening Vazifalarim', icon: CheckSquare },
-                    { id: 'docs', label: 'Hujjatlar (Wiki Hub)', icon: FileText },
-                    { id: 'timesheets', label: 'Vaqt Tabeli (Time Sheets)', icon: Clock },
-                    { id: 'reports', label: 'Hisobotlar & Workload', icon: BarChart3 },
+                    { id: 'docs', label: 'Bilimlar Bazasi (Wiki)', icon: FileText },
+                    { id: 'timesheets', label: 'Vaqt Tabeli (Time)', icon: Clock },
+                    { id: 'reports', label: 'Analitika & Workload', icon: BarChart3 },
                   ].map((nav) => {
                     const Icon = nav.icon;
                     const active = railSection === nav.id;
@@ -465,18 +836,22 @@ export const AppShell: React.FC<AppShellProps> = ({ onLogout }) => {
                       <button
                         key={nav.id}
                         onClick={() => navigateRail(nav.id as any)}
-                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-medium transition ${
+                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-medium transition ${
                           active
-                            ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30'
-                            : 'text-slate-300 hover:bg-slate-800/70'
+                            ? 'bg-white/[0.09] text-white font-semibold shadow-sm'
+                            : 'text-slate-300 hover:bg-white/[0.04] hover:text-white'
                         }`}
                       >
-                        <div className="flex items-center gap-2">
-                          <Icon className="w-3.5 h-3.5 text-slate-400" />
+                        <div className="flex items-center gap-3">
+                          <Icon
+                            className={`w-4 h-4 ${
+                              active ? 'text-indigo-400' : 'text-slate-400'
+                            }`}
+                          />
                           <span>{nav.label}</span>
                         </div>
                         {nav.badge ? (
-                          <span className="px-1.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 text-[10px] font-bold">
+                          <span className="px-2 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-bold">
                             {nav.badge}
                           </span>
                         ) : null}
@@ -485,420 +860,610 @@ export const AppShell: React.FC<AppShellProps> = ({ onLogout }) => {
                   })}
                 </div>
 
-                {/* Favorites */}
+                {/* Starred / Favorites */}
                 {hierarchy?.favorites && hierarchy.favorites.length > 0 && (
-                  <div>
-                    <div className="px-2 mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-400/90">
+                  <div className="pt-3 border-t border-white/[0.06]">
+                    <div className="px-3 mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-400/90">
                       <Star className="w-3 h-3 fill-current" />
-                      <span>Yulduzchalangan (Favorites)</span>
+                      <span>Tanlangan Loyihalar</span>
                     </div>
                     <div className="space-y-0.5">
-                      {hierarchy.favorites.map((proj) => {
-                        const isSelected = railSection === 'spaces' && activeProjectId === proj.id;
-                        return (
-                          <button
-                            key={proj.id}
-                            onClick={() => openProject(proj.id)}
-                            className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs transition ${
-                              isSelected
-                                ? 'bg-indigo-600 text-white font-semibold'
-                                : 'text-slate-300 hover:bg-slate-800/70'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span
-                                className="w-2 h-2 rounded-full shrink-0"
-                                style={{ backgroundColor: proj.color }}
-                              />
-                              <span className="truncate">{proj.name}</span>
-                            </div>
-                            <span className="text-[10px] font-mono opacity-75">{proj.project_key}</span>
-                          </button>
-                        );
-                      })}
+                      {hierarchy.favorites.map((proj) => (
+                        <button
+                          key={proj.id}
+                          onClick={() => {
+                            openProject(proj.id);
+                            setSidebarDrill('project');
+                          }}
+                          className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs text-slate-300 hover:bg-white/[0.05] hover:text-white transition group"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span
+                              className="w-2.5 h-2.5 rounded-full shrink-0"
+                              style={{ backgroundColor: proj.color }}
+                            />
+                            <span className="truncate font-medium">{proj.name}</span>
+                          </div>
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-white shrink-0" />
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}
 
-                {/* Nested Hierarchy: SPACES -> FOLDERS -> PROJECTS */}
-                <div>
-                  <div className="px-2 mb-1.5 flex items-center justify-between">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                      Bo‘limlar (Spaces) & Loyihalar
+                {/* Spaces (Click to Drill Inside a Space or Project!) */}
+                <div className="pt-3 border-t border-white/[0.06]">
+                  <div className="px-3 mb-2 flex items-center justify-between">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                      Bo‘limlar (Spaces)
                     </span>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => openModal('create_space')}
-                        className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white"
-                        title="Yangi Space (Bo‘lim) yaratish"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => openModal('create_space')}
+                      className="p-1 rounded-lg hover:bg-white/[0.08] text-slate-400 hover:text-white"
+                      title="Yangi Space yaratish"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
                   </div>
 
-                  <div className="space-y-1.5">
+                  <div className="space-y-1">
                     {hierarchy?.spaces.map((space) => {
-                      const isExpanded = !!expandedSpaces[space.id];
-                      return (
-                        <div key={space.id} className="space-y-0.5">
-                          {/* Space Header */}
-                          <div className="flex items-center justify-between px-2 py-1.5 rounded-xl hover:bg-slate-800/60 group">
-                            <button
-                              onClick={() =>
-                                setExpandedSpaces((prev) => ({
-                                  ...prev,
-                                  [space.id]: !prev[space.id],
-                                }))
-                              }
-                              className="flex items-center gap-1.5 min-w-0 flex-1 text-left"
-                            >
-                              {isExpanded ? (
-                                <ChevronDown className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                              ) : (
-                                <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                              )}
-                              <span
-                                className="w-2.5 h-2.5 rounded-md shrink-0"
-                                style={{ backgroundColor: space.color }}
-                              />
-                              <span className="text-xs font-bold text-slate-200 truncate">
-                                {space.name}
-                              </span>
-                            </button>
+                      const totalProjs =
+                        space.projects.length +
+                        space.folders.reduce((acc, f) => acc + f.projects.length, 0);
 
-                            <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1">
-                              <button
-                                onClick={() => openModal('create_folder', { space_id: space.id })}
-                                className="p-0.5 rounded hover:bg-slate-700 text-slate-400 hover:text-white"
-                                title="Papka qo‘shish"
-                              >
-                                <Folder className="w-3 h-3" />
-                              </button>
-                              <button
-                                onClick={() => openModal('create_project', { space_id: space.id })}
-                                className="p-0.5 rounded hover:bg-slate-700 text-slate-400 hover:text-white"
-                                title="Loyiha qo‘shish"
-                              >
-                                <Plus className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  try {
-                                    await api.deleteSpace(space.id);
-                                    await refreshAllWorkspaceData();
-                                    addToast({ type: 'info', title: `${space.name} bo‘limi o‘chirildi` });
-                                  } catch (err: any) {
-                                    addToast({ type: 'error', title: 'Xatolik', message: err.message });
-                                  }
-                                }}
-                                className="p-0.5 rounded hover:bg-rose-500/20 text-slate-500 hover:text-rose-400"
-                                title="Space bo‘limini o‘chirish"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
+                      return (
+                        <button
+                          key={space.id}
+                          onClick={() => {
+                            setSelectedSpaceId(space.id);
+                            setSidebarDrill('space');
+                          }}
+                          className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-white/[0.06] text-left transition group"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span
+                              className="w-3 h-3 rounded-md shrink-0"
+                              style={{ backgroundColor: space.color }}
+                            />
+                            <div className="min-w-0">
+                              <div className="text-xs font-semibold text-slate-200 group-hover:text-white truncate">
+                                {space.name}
+                              </div>
+                              <div className="text-[10px] text-slate-500">
+                                {space.folders.length} papka • {totalProjs} loyiha
+                              </div>
                             </div>
                           </div>
+                          <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-white shrink-0" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
 
-                          {/* Inside Space: Folders & Direct Projects */}
-                          {isExpanded && (
-                            <div className="pl-3.5 border-l border-slate-800/80 ml-3 space-y-1">
-                              {/* Folders */}
-                              {space.folders.map((folder) => {
-                                const fExpanded = !!expandedFolders[folder.id];
-                                return (
-                                  <div key={folder.id} className="space-y-0.5">
-                                    <div className="flex items-center justify-between px-2 py-1 rounded-lg hover:bg-slate-800/50 group">
-                                      <button
-                                        onClick={() =>
-                                          setExpandedFolders((prev) => ({
-                                            ...prev,
-                                            [folder.id]: !prev[folder.id],
-                                          }))
-                                        }
-                                        className="flex items-center gap-1.5 min-w-0 flex-1 text-left"
-                                      >
-                                        {fExpanded ? (
-                                          <ChevronDown className="w-3 h-3 text-slate-500" />
-                                        ) : (
-                                          <ChevronRight className="w-3 h-3 text-slate-500" />
-                                        )}
-                                        <Folder className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                        <span className="text-xs font-medium text-slate-300 truncate">
-                                          {folder.name}
-                                        </span>
-                                      </button>
-                                        <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1">
-                                          <button
-                                            onClick={() =>
-                                              openModal('create_project', {
-                                                space_id: space.id,
-                                                folder_id: folder.id,
-                                              })
-                                            }
-                                            className="p-0.5 rounded hover:bg-slate-700 text-slate-400 hover:text-white"
-                                            title="Papkaga loyiha qo‘shish"
-                                          >
-                                            <Plus className="w-3 h-3" />
-                                          </button>
-                                          <button
-                                            onClick={async (e) => {
-                                              e.stopPropagation();
-                                              try {
-                                                await api.deleteFolder(folder.id);
-                                                await refreshAllWorkspaceData();
-                                                addToast({ type: 'info', title: `${folder.name} papkasi o‘chirildi` });
-                                              } catch (err: any) {
-                                                addToast({ type: 'error', title: 'Xatolik', message: err.message });
-                                              }
-                                            }}
-                                            className="p-0.5 rounded hover:bg-rose-500/20 text-slate-500 hover:text-rose-400"
-                                            title="Papkani o‘chirish"
-                                          >
-                                            <Trash2 className="w-3 h-3" />
-                                          </button>
-                                        </div>
-                                    </div>
+                {/* All Projects Quick Drill-Down List */}
+                <div className="pt-3 border-t border-white/[0.06]">
+                  <div className="px-3 mb-2 flex items-center justify-between">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                      Barcha Loyihalar ({hierarchy?.all_projects.length || 0})
+                    </span>
+                    <button
+                      onClick={() => openModal('create_project')}
+                      className="p-1 rounded-lg hover:bg-white/[0.08] text-slate-400 hover:text-white"
+                      title="Yangi Loyiha yaratish"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
 
-                                    {/* Projects inside Folder */}
-                                    {fExpanded && (
-                                      <div className="pl-3.5 border-l border-slate-800/60 ml-2.5 space-y-0.5">
-                                        {folder.projects.map((proj) => {
-                                          const active =
-                                            railSection === 'spaces' && activeProjectId === proj.id;
-                                          return (
-                                            <button
-                                              key={proj.id}
-                                              onClick={() => openProject(proj.id)}
-                                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs transition ${
-                                                active
-                                                  ? 'bg-indigo-600 text-white font-semibold'
-                                                  : 'text-slate-300 hover:bg-slate-800/70'
-                                              }`}
-                                            >
-                                              <div className="flex items-center gap-2 min-w-0">
-                                                <span
-                                                  className="w-2 h-2 rounded-full shrink-0"
-                                                  style={{ backgroundColor: proj.color }}
-                                                />
-                                                <span className="truncate">{proj.name}</span>
-                                              </div>
-                                              <span className="text-[10px] font-mono opacity-75">
-                                                {proj.total_tasks}
-                                              </span>
-                                            </button>
-                                          );
-                                        })}
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
-
-                              {/* Direct Projects in Space */}
-                              {space.projects.map((proj) => {
-                                const active =
-                                  railSection === 'spaces' && activeProjectId === proj.id;
-                                return (
-                                  <button
-                                    key={proj.id}
-                                    onClick={() => openProject(proj.id)}
-                                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs transition ${
-                                      active
-                                        ? 'bg-indigo-600 text-white font-semibold'
-                                        : 'text-slate-300 hover:bg-slate-800/70'
-                                    }`}
-                                  >
-                                    <div className="flex items-center gap-2 min-w-0">
-                                      <span
-                                        className="w-2 h-2 rounded-full shrink-0"
-                                        style={{ backgroundColor: proj.color }}
-                                      />
-                                      <span className="truncate">{proj.name}</span>
-                                    </div>
-                                    <span className="text-[10px] font-mono opacity-75">
-                                      {proj.total_tasks}
-                                    </span>
-                                  </button>
-                                );
-                              })}
+                  <div className="space-y-1">
+                    {hierarchy?.all_projects.map((proj) => {
+                      const pct =
+                        proj.total_tasks && proj.total_tasks > 0
+                          ? Math.round(((proj.done_tasks || 0) / proj.total_tasks) * 100)
+                          : 0;
+                      return (
+                        <button
+                          key={proj.id}
+                          onClick={() => {
+                            openProject(proj.id);
+                            setSidebarDrill('project');
+                          }}
+                          className="w-full flex items-center justify-between px-3 py-2 rounded-xl hover:bg-white/[0.06] text-left transition group"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span
+                              className="w-2.5 h-2.5 rounded-full shrink-0"
+                              style={{ backgroundColor: proj.color }}
+                            />
+                            <div className="min-w-0">
+                              <div className="text-xs font-medium text-slate-200 group-hover:text-white truncate">
+                                {proj.name}
+                              </div>
+                              <div className="text-[10px] text-slate-500 font-mono">
+                                {proj.project_key} • {pct}% bajarildi
+                              </div>
                             </div>
-                          )}
-                        </div>
+                          </div>
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-white shrink-0" />
+                        </button>
                       );
                     })}
                   </div>
                 </div>
               </div>
-
-              {/* Bottom Quick Action */}
-              <div className="p-3 border-t border-slate-800 flex items-center justify-between text-xs">
-                <button
-                  onClick={() => openModal('create_project')}
-                  className="flex items-center gap-1.5 text-indigo-400 hover:text-indigo-300 font-semibold"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Yangi Loyiha</span>
-                </button>
-                <button
-                  onClick={() => openSettings('ws_trash')}
-                  className="flex items-center gap-1 text-slate-400 hover:text-white"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Savat</span>
-                </button>
-              </div>
-            </div>
-          )}
-        </aside>
-      )}
-
-      {/* =====================================================================
-          LAYER 3: MAIN CONTENT AREA + CONTEXTUAL HEADER & VIEW TABS
-         ===================================================================== */}
-      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
-        {/* Top Contextual Header */}
-        <header className="h-14 px-5 bg-slate-950 border-b border-slate-800/90 flex items-center justify-between gap-4 shrink-0">
-          <div className="flex items-center gap-3 min-w-0">
-            {!isSecondarySidebarOpen && (
-              <button
-                onClick={toggleSecondarySidebar}
-                className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300"
-                title="Yon menyuni ochish"
-              >
-                <PanelLeftOpen className="w-4 h-4" />
-              </button>
             )}
 
-            {/* Breadcrumbs */}
-            <div className="flex items-center gap-2 text-xs min-w-0">
-              <span className="text-slate-400 font-medium truncate hidden sm:inline">
-                {activeWorkspace?.name}
-              </span>
-              <ChevronRight className="w-3.5 h-3.5 text-slate-600 hidden sm:inline" />
-              {railSection === 'spaces' && currentProject ? (
-                <div className="flex items-center gap-2 min-w-0">
-                  <span
-                    className="w-2.5 h-2.5 rounded-full shrink-0"
-                    style={{ backgroundColor: currentProject.color }}
-                  />
-                  <span className="font-bold text-white truncate">{currentProject.name}</span>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-indigo-400">
-                    {currentProject.project_key}
-                  </span>
+            {/* DRILL MODE 2: SPACE SUB-MENU (Folders & Projects inside selected Space) */}
+            {sidebarDrill === 'space' && currentSpace && (
+              <div className="flex-1 flex flex-col overflow-hidden animate-drill-in">
+                <div className="p-3.5 border-b border-white/[0.07] bg-white/[0.02] space-y-2.5">
+                  <button
+                    onClick={() => setSidebarDrill('root')}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white transition"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Asosiy menyuga qaytish</span>
+                  </button>
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span
+                        className="w-3.5 h-3.5 rounded-lg shrink-0"
+                        style={{ backgroundColor: currentSpace.color }}
+                      />
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold text-white truncate">
+                          {currentSpace.name}
+                        </div>
+                        <div className="text-[10px] font-mono text-indigo-400">
+                          BO‘LIM • {currentSpace.key_code}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => openModal('create_folder', { space_id: currentSpace.id })}
+                        className="p-1.5 rounded-lg hover:bg-white/[0.08] text-slate-400 hover:text-white"
+                        title="Papka qo‘shish"
+                      >
+                        <Folder className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => openModal('create_project', { space_id: currentSpace.id })}
+                        className="p-1.5 rounded-lg hover:bg-white/[0.08] text-slate-400 hover:text-white"
+                        title="Loyiha qo‘shish"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              ) : (
-                <span className="font-bold text-white uppercase tracking-wide">
-                  {railSection.replace('_', ' ')}
-                </span>
-              )}
-            </div>
-          </div>
 
-          {/* Right Header Controls: Active Stopwatch Timer, Command Palette, New Task */}
-          <div className="flex items-center gap-2.5 shrink-0">
-            {activeTimer && (
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-rose-600/20 border border-rose-500/40 text-xs">
-                <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-                <span
-                  onClick={() => openTaskDrawer(activeTimer.taskId)}
-                  className="font-mono font-bold text-rose-300 cursor-pointer"
-                >
-                  {activeTimer.taskKey}
-                </span>
-                <button
-                  onClick={handleStopGlobalTimer}
-                  className="px-2 py-0.5 rounded bg-rose-600 text-white font-semibold flex items-center gap-1"
-                >
-                  <Square className="w-3 h-3 fill-current" /> Stop
-                </button>
+                <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                  {/* Folders inside Space */}
+                  {currentSpace.folders.map((folder) => {
+                    const fExpanded = !!expandedFolders[folder.id];
+                    return (
+                      <div key={folder.id} className="space-y-1">
+                        <div className="flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] group">
+                          <button
+                            onClick={() =>
+                              setExpandedFolders((prev) => ({
+                                ...prev,
+                                [folder.id]: !prev[folder.id],
+                              }))
+                            }
+                            className="flex items-center gap-2 min-w-0 flex-1 text-left"
+                          >
+                            {fExpanded ? (
+                              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                            ) : (
+                              <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                            )}
+                            <Folder className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            <span className="text-xs font-semibold text-slate-200 truncate">
+                              {folder.name}
+                            </span>
+                          </button>
+
+                          <button
+                            onClick={() =>
+                              openModal('create_project', {
+                                space_id: currentSpace.id,
+                                folder_id: folder.id,
+                              })
+                            }
+                            className="p-1 rounded hover:bg-white/[0.1] text-slate-400 hover:text-white"
+                            title="Papkaga loyiha qo‘shish"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
+
+                        {fExpanded && (
+                          <div className="pl-3 border-l border-white/[0.08] ml-3 space-y-1">
+                            {folder.projects.map((proj) => (
+                              <button
+                                key={proj.id}
+                                onClick={() => {
+                                  openProject(proj.id);
+                                  setSidebarDrill('project');
+                                }}
+                                className="w-full flex items-center justify-between px-3 py-2 rounded-xl hover:bg-white/[0.06] text-xs text-slate-300 hover:text-white transition"
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span
+                                    className="w-2 h-2 rounded-full shrink-0"
+                                    style={{ backgroundColor: proj.color }}
+                                  />
+                                  <span className="truncate">{proj.name}</span>
+                                </div>
+                                <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* Direct Projects in Space */}
+                  <div className="space-y-1">
+                    <div className="px-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                      To‘g‘ridan-to‘g‘ri Loyihalar
+                    </div>
+                    {currentSpace.projects.map((proj) => (
+                      <button
+                        key={proj.id}
+                        onClick={() => {
+                          openProject(proj.id);
+                          setSidebarDrill('project');
+                        }}
+                        className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-white/[0.06] text-xs text-slate-200 transition"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span
+                            className="w-2.5 h-2.5 rounded-full shrink-0"
+                            style={{ backgroundColor: proj.color }}
+                          />
+                          <span className="truncate font-medium">{proj.name}</span>
+                        </div>
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
 
-            <button
-              onClick={() => setCommandOpen(true)}
-              className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs text-slate-300"
-            >
-              <Search className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Qidiruv</span>
-              <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-slate-950 text-slate-400">
-                Ctrl+K
-              </kbd>
-            </button>
+            {/* DRILL MODE 3: YOUTUBE STUDIO STYLE PROJECT SUB-NAVIGATION */}
+            {sidebarDrill === 'project' && currentProject && (
+              <div className="flex-1 flex flex-col overflow-hidden animate-drill-in">
+                {/* Back button + Current Project Card */}
+                <div className="p-3.5 border-b border-white/[0.07] bg-gradient-to-b from-white/[0.03] to-transparent space-y-3">
+                  <div className="flex items-center justify-between">
+                    <button
+                      onClick={() => setSidebarDrill('root')}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white transition"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      <span>Barcha loyihalar</span>
+                    </button>
 
-            <button
-              onClick={() => openModal('create_task')}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white shadow-lg shadow-indigo-600/20"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Vazifa</span>
-            </button>
-          </div>
-        </header>
+                    {currentProject.space_id && (
+                      <button
+                        onClick={() => {
+                          setSelectedSpaceId(currentProject.space_id);
+                          setSidebarDrill('space');
+                        }}
+                        className="text-[11px] text-indigo-400 hover:text-indigo-300 font-medium"
+                      >
+                        Bo‘limga o‘tish
+                      </button>
+                    )}
+                  </div>
 
-        {/* Project 9-Tab View Switcher Sub-Header (when inside a Project) */}
-        {railSection === 'spaces' && currentProject && (
-          <div className="px-5 bg-slate-950 border-b border-slate-800 flex items-center gap-1 overflow-x-auto shrink-0">
-            {PROJECT_TABS.map((t) => {
-              const Icon = t.icon;
-              const active = projectTab === t.id;
+                  {/* Active Project Mini Hero Card inside Sidebar (like YouTube Studio Video Card) */}
+                  <div className="p-3 rounded-2xl bg-[#131724] border border-white/[0.08] space-y-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div
+                          className="w-8 h-8 rounded-xl flex items-center justify-center text-white font-bold text-xs shrink-0 shadow"
+                          style={{ backgroundColor: currentProject.color }}
+                        >
+                          {currentProject.project_key}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-white truncate">
+                            {currentProject.name}
+                          </div>
+                          <div className="text-[10px] text-emerald-400 font-medium uppercase">
+                            ● {currentProject.status.replace('_', ' ')}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Progress bar */}
+                    {(() => {
+                      const total = currentProject.total_tasks || 0;
+                      const done = currentProject.done_tasks || 0;
+                      const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+                      return (
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-[10px] text-slate-400">
+                            <span>Bajarilish ko‘rsatkichi</span>
+                            <span className="font-mono font-bold text-white">
+                              {done}/{total} ({pct}%)
+                            </span>
+                          </div>
+                          <div className="w-full h-1.5 rounded-full bg-slate-950 overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-emerald-400 transition-all duration-300"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                {/* Vertical Project Sub-Menu Items (9 Views) */}
+                <div className="flex-1 overflow-y-auto p-2.5 space-y-1">
+                  <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    Loyiha Ichki Bo‘limlari
+                  </div>
+                  {PROJECT_TABS.map((t) => {
+                    const Icon = t.icon;
+                    const active = railSection === 'spaces' && projectTab === t.id;
+                    return (
+                      <button
+                        key={t.id}
+                        onClick={() => {
+                          if (railSection !== 'spaces') navigateRail('spaces');
+                          setProjectTab(t.id);
+                        }}
+                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left transition ${
+                          active
+                            ? 'bg-indigo-600/20 border-l-4 border-indigo-500 text-white font-semibold'
+                            : 'text-slate-300 hover:bg-white/[0.05] hover:text-white'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <Icon
+                            className={`w-4 h-4 shrink-0 ${
+                              active ? 'text-indigo-400' : 'text-slate-400'
+                            }`}
+                          />
+                          <div className="min-w-0">
+                            <div className="text-xs truncate">{t.label}</div>
+                            <div className="text-[10px] text-slate-500 truncate">{t.sub}</div>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* DRILL MODE 4: SETTINGS STUDIO SUB-NAVIGATION */}
+            {sidebarDrill === 'settings' && (
+              <div className="flex-1 flex flex-col overflow-hidden animate-drill-in">
+                <div className="p-3.5 border-b border-white/[0.07] bg-white/[0.02] space-y-2">
+                  <button
+                    onClick={() => {
+                      navigateRail('pulse');
+                      setSidebarDrill('root');
+                    }}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white transition"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Asosiy menyuga qaytish</span>
+                  </button>
+                  <div className="text-sm font-bold text-white">Boshqaruv va Sozlamalar</div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-3 space-y-5">
+                  {SETTINGS_MENU.map((grp) => (
+                    <div key={grp.group}>
+                      <div className="px-2.5 mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                        {grp.group}
+                      </div>
+                      <div className="space-y-1">
+                        {grp.items.map((item) => {
+                          const Icon = item.icon;
+                          const active = settingsTab === item.id;
+                          return (
+                            <button
+                              key={item.id}
+                              onClick={() => {
+                                if (railSection !== 'settings') openSettings(item.id);
+                                else setSettingsTab(item.id);
+                              }}
+                              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium transition ${
+                                active
+                                  ? 'bg-indigo-600/20 border-l-4 border-indigo-500 text-white font-semibold'
+                                  : 'text-slate-300 hover:bg-white/[0.05]'
+                              }`}
+                            >
+                              <Icon
+                                className={`w-4 h-4 shrink-0 ${
+                                  active ? 'text-indigo-400' : 'text-slate-400'
+                                }`}
+                              />
+                              <span className="truncate">{item.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Sidebar Footer */}
+            <div className="p-3 border-t border-white/[0.07] bg-[#0a0c14] flex items-center justify-between text-xs">
+              <button
+                onClick={() => {
+                  openSettings('my_profile');
+                  setSidebarDrill('settings');
+                }}
+                className="flex items-center gap-2 text-slate-400 hover:text-white font-medium"
+              >
+                <Settings className="w-4 h-4 text-indigo-400" />
+                <span>Sozlamalar Markazi</span>
+              </button>
+              <button
+                onClick={() => {
+                  openSettings('ws_trash');
+                  setSidebarDrill('settings');
+                }}
+                className="p-1.5 rounded-lg hover:bg-white/[0.07] text-slate-400 hover:text-rose-400"
+                title="Savat (Recycle Bin)"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          </aside>
+        ) : (
+          /* COLLAPSED YOUTUBE MINI-SIDEBAR (72px) */
+          <aside className="w-[72px] bg-[#0c0f17] border-r border-white/[0.07] flex flex-col items-center py-3 gap-2 shrink-0 z-20">
+            {[
+              { id: 'pulse', label: 'Studio', icon: Home },
+              { id: 'inbox', label: 'Inbox', icon: Bell, badge: unreadNotificationsCount },
+              { id: 'my_work', label: 'Vazifalar', icon: CheckSquare },
+              { id: 'spaces', label: 'Loyihalar', icon: FolderKanban },
+              { id: 'docs', label: 'Wiki', icon: FileText },
+              { id: 'timesheets', label: 'Vaqt', icon: Clock },
+              { id: 'reports', label: 'Analitika', icon: BarChart3 },
+              { id: 'settings', label: 'Sozlama', icon: Settings },
+            ].map((item) => {
+              const Icon = item.icon;
+              const active = railSection === item.id;
               return (
                 <button
-                  key={t.id}
-                  onClick={() => setProjectTab(t.id)}
-                  className={`flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-semibold border-b-2 whitespace-nowrap transition ${
+                  key={item.id}
+                  onClick={() => {
+                    if (item.id === 'settings') openSettings('my_profile');
+                    else navigateRail(item.id as any);
+                  }}
+                  className={`relative w-14 py-2 rounded-xl flex flex-col items-center justify-center gap-1 transition ${
                     active
-                      ? 'border-indigo-500 text-indigo-400 bg-indigo-500/5'
-                      : 'border-transparent text-slate-400 hover:text-slate-200'
+                      ? 'bg-indigo-600/20 text-indigo-400'
+                      : 'text-slate-400 hover:bg-white/[0.05] hover:text-white'
                   }`}
                 >
-                  <Icon className="w-3.5 h-3.5" />
-                  <span>{t.label}</span>
+                  <Icon className="w-4 h-4" />
+                  <span className="text-[10px] font-medium truncate max-w-[52px]">
+                    {item.label}
+                  </span>
+                  {item.badge ? (
+                    <span className="absolute top-1 right-2 w-4 h-4 rounded-full bg-rose-500 text-[9px] font-bold text-white flex items-center justify-center">
+                      {item.badge}
+                    </span>
+                  ) : null}
                 </button>
               );
             })}
-          </div>
+          </aside>
         )}
 
-        {/* Active View Content */}
-        <main className="flex-1 overflow-hidden bg-slate-950">
-          {(railSection === 'pulse' || railSection === 'docs' || railSection === 'timesheets') && (
-            <PulseDashboardView
-              mode={railSection}
-              hierarchy={hierarchy}
-              onRefreshAll={refreshAllWorkspaceData}
-            />
-          )}
-
-          {railSection === 'inbox' && <InboxView />}
-
-          {railSection === 'my_work' && <MyWorkView />}
-
-          {railSection === 'reports' && <ReportsAnalyticsView />}
-
-          {railSection === 'settings' && (
-            <SettingsCenterView
-              members={members}
-              labels={labels}
-              onRefreshAll={refreshAllWorkspaceData}
-            />
-          )}
-
+        {/* =====================================================================
+            MAIN CONTENT VIEWPORT
+           ===================================================================== */}
+        <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden bg-[#090b10]">
+          {/* Sleek YouTube-style Filter Chips Bar when inside a Project */}
           {railSection === 'spaces' && currentProject && (
-            <ProjectWorkspaceView
-              projectId={currentProject.id}
-              members={members}
-              labels={labels}
-              refreshTrigger={refreshTrigger}
-              onRefreshHierarchy={refreshAllWorkspaceData}
-            />
+            <div className="px-6 py-2.5 bg-[#0c0f17]/80 border-b border-white/[0.06] flex items-center justify-between gap-4 overflow-x-auto shrink-0">
+              <div className="flex items-center gap-1.5">
+                {PROJECT_TABS.map((t) => {
+                  const Icon = t.icon;
+                  const active = projectTab === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => setProjectTab(t.id)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
+                        active
+                          ? 'bg-white text-slate-950 shadow-sm'
+                          : 'bg-white/[0.05] text-slate-300 hover:bg-white/[0.1] hover:text-white'
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      <span>{t.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Quick Project Switcher Pill */}
+              <div className="hidden xl:flex items-center gap-2 shrink-0">
+                <span className="text-[11px] text-slate-400">Loyiha:</span>
+                <select
+                  value={currentProject.id}
+                  onChange={(e) => {
+                    openProject(Number(e.target.value));
+                    setSidebarDrill('project');
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-[#141824] border border-white/[0.08] text-xs font-semibold text-white"
+                >
+                  {hierarchy?.all_projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.project_key} — {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
           )}
-        </main>
+
+          {/* Active View Content */}
+          <main className="flex-1 overflow-hidden">
+            {(railSection === 'pulse' ||
+              railSection === 'docs' ||
+              railSection === 'timesheets') && (
+              <PulseDashboardView
+                mode={railSection}
+                hierarchy={hierarchy}
+                onRefreshAll={refreshAllWorkspaceData}
+              />
+            )}
+
+            {railSection === 'inbox' && <InboxView />}
+
+            {railSection === 'my_work' && <MyWorkView />}
+
+            {railSection === 'reports' && <ReportsAnalyticsView />}
+
+            {railSection === 'settings' && (
+              <SettingsCenterView
+                members={members}
+                labels={labels}
+                onRefreshAll={refreshAllWorkspaceData}
+              />
+            )}
+
+            {railSection === 'spaces' && currentProject && (
+              <ProjectWorkspaceView
+                projectId={currentProject.id}
+                members={members}
+                labels={labels}
+                refreshTrigger={refreshTrigger}
+                onRefreshHierarchy={refreshAllWorkspaceData}
+              />
+            )}
+          </main>
+        </div>
       </div>
 
       {/* =====================================================================
-          LAYER 4: SLIDE-OVER TASK DETAIL DRAWER, MODALS & TOASTS
+          SLIDE-OVER TASK DETAIL DRAWER, MODALS & TOASTS
          ===================================================================== */}
       <TaskDetailDrawer
         members={members}

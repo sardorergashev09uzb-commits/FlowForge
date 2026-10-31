@@ -8,8 +8,57 @@
   }
 
   body {
-    @apply bg-slate-950 text-slate-100 font-sans antialiased overflow-hidden;
+    @apply bg-[#090b10] text-slate-100 font-sans antialiased overflow-hidden;
+    background-image:
+      radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.08) 0px, transparent 45%),
+      radial-gradient(at 100% 0%, rgba(139, 92, 246, 0.06) 0px, transparent 40%),
+      radial-gradient(at 50% 100%, rgba(16, 185, 129, 0.04) 0px, transparent 50%);
   }
+}
+
+@keyframes slideInFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-drill-in {
+  animation: slideInFromRight 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-drill-back {
+  animation: slideInFromLeft 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-popover {
+  animation: popIn 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 /* Custom subtle scrollbars */
@@ -23,12 +72,12 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.2);
+  background: rgba(148, 163, 184, 0.18);
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.38);
+  background: rgba(148, 163, 184, 0.35);
 }
 
 /* UI Density modifiers */
