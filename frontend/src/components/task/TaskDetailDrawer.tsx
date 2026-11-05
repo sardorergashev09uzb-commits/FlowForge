@@ -17,12 +17,22 @@ import {
   Send,
   Tag,
   ChevronRight,
+  ChevronDown,
+  ChevronLeft,
   CheckCircle2,
   Lock,
   Upload,
   ExternalLink,
   Edit3,
   Flag,
+  Check,
+  MoreHorizontal,
+  Copy,
+  Share2,
+  Columns,
+  User,
+  Calendar,
+  Star,
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAppStore } from '../../store/useAppStore';
@@ -75,6 +85,22 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
   const [commentBody, setCommentBody] = useState('');
   const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
   const [editingCommentText, setEditingCommentText] = useState('');
+
+  // Custom Interactive Selectors & More Actions Popover
+  const [activePicker, setActivePicker] = useState<'status' | 'priority' | 'assignee' | 'sprint' | 'actions' | null>(null);
+  const [assigneeSearchQ, setAssigneeSearchQ] = useState('');
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  // Close custom pickers on outside click
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setActivePicker(null);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
 
   const loadTaskDetails = async (id: number) => {
     setLoading(true);
@@ -388,23 +414,83 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
                   <span>{task.watcher_ids?.length || 1}</span>
                 </button>
 
-                {/* Move to Trash */}
-                <button
-                  onClick={async () => {
-                    try {
-                      await api.deleteTask(task.id);
-                      addToast({ type: 'info', title: `${task.task_key} savatga o‘tkazildi` });
-                      openTaskDrawer(null);
-                      onTaskMutated();
-                    } catch (err: any) {
-                      addToast({ type: 'error', title: 'Ruxsat yo‘q', message: err.message });
-                    }
-                  }}
-                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition"
-                  title="Savatga (Trash) yuborish"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                {/* More Actions Dropdown ('•••') */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setActivePicker((v) => (v === 'actions' ? null : 'actions'))}
+                    className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+                    title="Qo‘shimcha amallar"
+                  >
+                    <MoreHorizontal className="w-4 h-4" />
+                  </button>
+
+                  {activePicker === 'actions' && (
+                    <div
+                      ref={pickerRef}
+                      className="absolute right-0 mt-1.5 w-52 rounded-2xl bg-[#141824] border border-white/[0.1] shadow-2xl p-1.5 z-50 animate-popover text-left"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(`${task.task_key}: ${task.title}`);
+                          addToast({ type: 'success', title: 'Vazifa ma’lumoti nusxalandi' });
+                          setActivePicker(null);
+                        }}
+                        className="w-full px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06] flex items-center gap-2 text-xs text-slate-200"
+                      >
+                        <Copy className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>Kodni nusxalash</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(`${window.location.origin}?task=${task.id}`);
+                          addToast({ type: 'success', title: 'Havola nusxalandi' });
+                          setActivePicker(null);
+                        }}
+                        className="w-full px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06] flex items-center gap-2 text-xs text-slate-200"
+                      >
+                        <Share2 className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>Havolani nusxalash</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setActivePicker(null);
+                          await handleFieldUpdate({ is_milestone: !task.is_milestone });
+                        }}
+                        className="w-full px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06] flex items-center gap-2 text-xs text-slate-200"
+                      >
+                        <Star className={`w-3.5 h-3.5 ${task.is_milestone ? 'text-amber-400 fill-current' : 'text-slate-400'}`} />
+                        <span>{task.is_milestone ? 'Milestoneni bekor qilish' : '★ Milestone qilish'}</span>
+                      </button>
+
+                      <div className="my-1 border-t border-white/[0.06]" />
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setActivePicker(null);
+                          try {
+                            await api.deleteTask(task.id);
+                            addToast({ type: 'info', title: `${task.task_key} savatga o‘tkazildi` });
+                            openTaskDrawer(null);
+                            onTaskMutated();
+                          } catch (err: any) {
+                            addToast({ type: 'error', title: 'Ruxsat yo‘q', message: err.message });
+                          }
+                        }}
+                        className="w-full px-2.5 py-1.5 rounded-lg hover:bg-rose-500/20 text-rose-400 flex items-center gap-2 text-xs"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Savatga yuborish</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
 
                 <button
                   onClick={() => openTaskDrawer(null)}
@@ -432,72 +518,267 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
                 />
               </div>
 
-              {/* Attributes Grid (9 fields) */}
+              {/* Attributes Grid (9 fields with custom animated dropdown selectors) */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-4 rounded-2xl bg-slate-950/70 border border-slate-800/80">
-                <div>
+                {/* 1. Custom Status Picker */}
+                <div className="relative">
                   <label className="block text-[11px] font-medium text-slate-400 mb-1">Status</label>
-                  <select
-                    value={task.status_id}
-                    onChange={(e) => handleFieldUpdate({ status_id: Number(e.target.value) })}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs font-medium text-white"
+                  <button
+                    type="button"
+                    onClick={() => setActivePicker((v) => (v === 'status' ? null : 'status'))}
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-indigo-500/50 flex items-center justify-between text-xs font-semibold text-white transition"
                   >
-                    {projectStatuses.map((st) => (
-                      <option key={st.id} value={st.id}>
-                        {st.name}
-                      </option>
-                    ))}
-                  </select>
+                    <div className="flex items-center gap-2 truncate">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full shrink-0"
+                        style={{
+                          backgroundColor:
+                            projectStatuses.find((s) => s.id === task.status_id)?.color || '#6366f1',
+                        }}
+                      />
+                      <span className="truncate">
+                        {projectStatuses.find((s) => s.id === task.status_id)?.name || 'Status'}
+                      </span>
+                    </div>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  </button>
+
+                  {activePicker === 'status' && (
+                    <div
+                      ref={pickerRef}
+                      className="absolute left-0 mt-1.5 w-56 rounded-2xl bg-[#141824] border border-white/[0.1] shadow-2xl p-1.5 z-50 animate-popover"
+                    >
+                      <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-white/[0.06] mb-1">
+                        Statusni tanlang
+                      </div>
+                      <div className="max-h-52 overflow-y-auto space-y-0.5">
+                        {projectStatuses.map((st) => (
+                          <button
+                            key={st.id}
+                            type="button"
+                            onClick={() => {
+                              handleFieldUpdate({ status_id: st.id });
+                              setActivePicker(null);
+                            }}
+                            className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs transition ${
+                              task.status_id === st.id
+                                ? 'bg-indigo-600/20 text-white font-bold border border-indigo-500/30'
+                                : 'text-slate-300 hover:bg-white/[0.06]'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 truncate">
+                              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: st.color }} />
+                              <span className="truncate">{st.name}</span>
+                            </div>
+                            {task.status_id === st.id && <Check className="w-3.5 h-3.5 text-indigo-400 shrink-0" />}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                <div>
+                {/* 2. Custom Priority Picker */}
+                <div className="relative">
                   <label className="block text-[11px] font-medium text-slate-400 mb-1">Ustuvorlik</label>
-                  <select
-                    value={task.priority}
-                    onChange={(e) => handleFieldUpdate({ priority: e.target.value })}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs font-medium text-white"
+                  <button
+                    type="button"
+                    onClick={() => setActivePicker((v) => (v === 'priority' ? null : 'priority'))}
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-indigo-500/50 flex items-center justify-between text-xs font-semibold text-white transition"
                   >
-                    <option value="urgent">🔥 Urgent (Shoshilinch)</option>
-                    <option value="high">⬆️ High (Yuqori)</option>
-                    <option value="medium">⏺ Medium (O‘rta)</option>
-                    <option value="low">⬇️ Low (Past)</option>
-                    <option value="none">⚪ None</option>
-                  </select>
+                    <div className="flex items-center gap-1.5 truncate">
+                      <Flag className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span className="capitalize">{task.priority}</span>
+                    </div>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  </button>
+
+                  {activePicker === 'priority' && (
+                    <div
+                      ref={pickerRef}
+                      className="absolute left-0 mt-1.5 w-52 rounded-2xl bg-[#141824] border border-white/[0.1] shadow-2xl p-1.5 z-50 animate-popover"
+                    >
+                      <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-white/[0.06] mb-1">
+                        Ustuvorlik darajasi
+                      </div>
+                      {[
+                        { key: 'urgent', label: '🔥 Urgent (Shoshilinch)', color: 'text-rose-400' },
+                        { key: 'high', label: '⬆️ High (Yuqori)', color: 'text-amber-400' },
+                        { key: 'medium', label: '⏺ Medium (O‘rta)', color: 'text-indigo-400' },
+                        { key: 'low', label: '⬇️ Low (Past)', color: 'text-sky-400' },
+                        { key: 'none', label: '⚪ Belgilanmagan', color: 'text-slate-400' },
+                      ].map((prio) => (
+                        <button
+                          key={prio.key}
+                          type="button"
+                          onClick={() => {
+                            handleFieldUpdate({ priority: prio.key });
+                            setActivePicker(null);
+                          }}
+                          className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs transition ${
+                            task.priority === prio.key
+                              ? 'bg-white/[0.08] text-white font-bold'
+                              : 'text-slate-300 hover:bg-white/[0.06]'
+                          }`}
+                        >
+                          <span className={prio.color}>{prio.label}</span>
+                          {task.priority === prio.key && <Check className="w-3.5 h-3.5 text-indigo-400" />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                <div>
+                {/* 3. Custom Assignee Picker */}
+                <div className="relative">
                   <label className="block text-[11px] font-medium text-slate-400 mb-1">Mas’ul (Assignee)</label>
-                  <select
-                    value={task.assignee_id || ''}
-                    onChange={(e) =>
-                      handleFieldUpdate({ assignee_id: e.target.value ? Number(e.target.value) : null })
-                    }
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs font-medium text-white"
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActivePicker((v) => (v === 'assignee' ? null : 'assignee'));
+                      setAssigneeSearchQ('');
+                    }}
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-indigo-500/50 flex items-center justify-between text-xs font-semibold text-white transition"
                   >
-                    <option value="">Tayinlanmagan</option>
-                    {members.map((m) => (
-                      <option key={m.user_id} value={m.user_id}>
-                        {m.full_name} ({m.role})
-                      </option>
-                    ))}
-                  </select>
+                    <div className="flex items-center gap-2 truncate">
+                      {task.assignee ? (
+                        <>
+                          <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-[9px] font-bold text-white shrink-0">
+                            {task.assignee.full_name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
+                          </div>
+                          <span className="truncate">{task.assignee.full_name}</span>
+                        </>
+                      ) : (
+                        <span className="text-slate-500">Tayinlanmagan</span>
+                      )}
+                    </div>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  </button>
+
+                  {activePicker === 'assignee' && (
+                    <div
+                      ref={pickerRef}
+                      className="absolute left-0 mt-1.5 w-60 rounded-2xl bg-[#141824] border border-white/[0.1] shadow-2xl p-2 z-50 animate-popover"
+                    >
+                      <input
+                        type="text"
+                        autoFocus
+                        value={assigneeSearchQ}
+                        onChange={(e) => setAssigneeSearchQ(e.target.value)}
+                        placeholder="A’zoni qidiring..."
+                        className="w-full px-2.5 py-1 rounded-lg bg-black/40 border border-white/[0.08] text-xs text-white mb-1.5 focus:outline-none focus:border-indigo-500"
+                      />
+                      <div className="max-h-52 overflow-y-auto space-y-0.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleFieldUpdate({ assignee_id: null });
+                            setActivePicker(null);
+                          }}
+                          className={`w-full px-2 py-1.5 rounded-lg flex items-center justify-between text-xs transition ${
+                            !task.assignee_id ? 'bg-white/[0.08] text-white font-semibold' : 'text-slate-400 hover:bg-white/[0.06]'
+                          }`}
+                        >
+                          <span>Tayinlanmagan</span>
+                          {!task.assignee_id && <Check className="w-3.5 h-3.5 text-indigo-400" />}
+                        </button>
+                        {members
+                          .filter((m) =>
+                            !assigneeSearchQ ||
+                            m.full_name.toLowerCase().includes(assigneeSearchQ.toLowerCase())
+                          )
+                          .map((m) => (
+                            <button
+                              key={m.user_id}
+                              type="button"
+                              onClick={() => {
+                                handleFieldUpdate({ assignee_id: m.user_id });
+                                setActivePicker(null);
+                              }}
+                              className={`w-full px-2 py-1.5 rounded-lg flex items-center justify-between text-xs transition ${
+                                task.assignee_id === m.user_id
+                                  ? 'bg-indigo-600/20 text-white font-bold border border-indigo-500/30'
+                                  : 'text-slate-300 hover:bg-white/[0.06]'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 truncate">
+                                <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-[9px] font-bold text-white shrink-0">
+                                  {m.full_name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
+                                </div>
+                                <div className="text-left truncate">
+                                  <div className="truncate">{m.full_name}</div>
+                                  <div className="text-[10px] text-slate-500">{m.role}</div>
+                                </div>
+                              </div>
+                              {task.assignee_id === m.user_id && <Check className="w-3.5 h-3.5 text-indigo-400 shrink-0" />}
+                            </button>
+                          ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                <div>
+                {/* 4. Custom Sprint Picker */}
+                <div className="relative">
                   <label className="block text-[11px] font-medium text-slate-400 mb-1">Sprint / Sikl</label>
-                  <select
-                    value={task.sprint_id || ''}
-                    onChange={(e) =>
-                      handleFieldUpdate({ sprint_id: e.target.value ? Number(e.target.value) : null })
-                    }
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs font-medium text-white"
+                  <button
+                    type="button"
+                    onClick={() => setActivePicker((v) => (v === 'sprint' ? null : 'sprint'))}
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-indigo-500/50 flex items-center justify-between text-xs font-semibold text-white transition"
                   >
-                    <option value="">Sprintsiz (Backlog)</option>
-                    {projectSprints.map((sp) => (
-                      <option key={sp.id} value={sp.id}>
-                        {sp.name}
-                      </option>
-                    ))}
-                  </select>
+                    <div className="flex items-center gap-1.5 truncate">
+                      <Calendar className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                      <span className="truncate">
+                        {projectSprints.find((sp) => sp.id === task.sprint_id)?.name || 'Sprintsiz (Backlog)'}
+                      </span>
+                    </div>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  </button>
+
+                  {activePicker === 'sprint' && (
+                    <div
+                      ref={pickerRef}
+                      className="absolute left-0 mt-1.5 w-60 rounded-2xl bg-[#141824] border border-white/[0.1] shadow-2xl p-1.5 z-50 animate-popover"
+                    >
+                      <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-white/[0.06] mb-1">
+                        Sprintni tanlang
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleFieldUpdate({ sprint_id: null });
+                          setActivePicker(null);
+                        }}
+                        className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs transition ${
+                          !task.sprint_id ? 'bg-white/[0.08] text-white font-semibold' : 'text-slate-400 hover:bg-white/[0.06]'
+                        }`}
+                      >
+                        <span>Sprintsiz (Backlog)</span>
+                        {!task.sprint_id && <Check className="w-3.5 h-3.5 text-indigo-400" />}
+                      </button>
+                      {projectSprints.map((sp) => (
+                        <button
+                          key={sp.id}
+                          type="button"
+                          onClick={() => {
+                            handleFieldUpdate({ sprint_id: sp.id });
+                            setActivePicker(null);
+                          }}
+                          className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs transition ${
+                            task.sprint_id === sp.id
+                              ? 'bg-indigo-600/20 text-white font-bold border border-indigo-500/30'
+                              : 'text-slate-300 hover:bg-white/[0.06]'
+                          }`}
+                        >
+                          <div className="truncate text-left">
+                            <div className="font-semibold">{sp.name}</div>
+                            <div className="text-[10px] text-slate-400 uppercase">{sp.status}</div>
+                          </div>
+                          {task.sprint_id === sp.id && <Check className="w-3.5 h-3.5 text-indigo-400" />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div>

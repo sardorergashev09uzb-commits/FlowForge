@@ -11,6 +11,12 @@ import {
   Sparkles,
   CheckCircle2,
   AlertCircle,
+  Eye,
+  EyeOff,
+  Kanban,
+  Clock,
+  ArrowLeft,
+  Check,
 } from 'lucide-react';
 import { api, setStoredToken } from '../../lib/api';
 import { useAppStore } from '../../store/useAppStore';
@@ -19,58 +25,17 @@ interface AuthScreenProps {
   onAuthenticated: () => void;
 }
 
-const DEMO_ACCOUNTS = [
-  {
-    label: 'Owner (To‘liq huquq)',
-    name: 'Sardorbek Alimov',
-    email: 'sardorbek@flowforge.uz',
-    roleBadge: 'OWNER',
-    badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
-    desc: '2 ta Workspace, barcha Space, Loyiha va Xavfsizlik sozlamalariga to‘liq ruxsat',
-  },
-  {
-    label: 'Admin (Boshqaruvchi)',
-    name: 'Malika Karimova',
-    email: 'malika@flowforge.uz',
-    roleBadge: 'ADMIN',
-    badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
-    desc: 'A’zolarni taklif qilish, jamoa va loyihalarni boshqarish (Egani o‘chira olmaydi)',
-  },
-  {
-    label: 'Member (Dasturchi)',
-    name: 'Javohir Rustamov',
-    email: 'javohir@flowforge.uz',
-    roleBadge: 'MEMBER',
-    badgeColor: 'bg-sky-500/20 text-sky-300 border-sky-500/30',
-    desc: 'Vazifalar, Kanban, Subtask, Vaqt hisobi va Izohlar bilan ishlash',
-  },
-  {
-    label: 'Viewer (Faqat ko‘rish)',
-    name: 'Nilufar Saidova',
-    email: 'nilufar@flowforge.uz',
-    roleBadge: 'VIEWER',
-    badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
-    desc: 'Faqat ko‘rish rejimi (Read-only). Tahrirlash so‘rovlari serverda rad etiladi',
-  },
-  {
-    label: 'Boshqa Tenant (Izolyatsiya)',
-    name: 'Azizbek Toshmatov',
-    email: 'aziz@othercompany.uz',
-    roleBadge: 'ISOLATED',
-    badgeColor: 'bg-rose-500/20 text-rose-300 border-rose-500/30',
-    desc: 'Alohida kompaniya workspace egasi (FlowForge Tech ma’lumotlarini ko‘ra olmaydi)',
-  },
-];
-
 export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
-  const [email, setEmail] = useState('sardorbek@flowforge.uz');
-  const [password, setPassword] = useState('FlowForge!2026');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [fullName, setFullName] = useState('');
   const [workspaceName, setWorkspaceName] = useState('');
   const [jobTitle, setJobTitle] = useState('');
   const [resetToken, setResetToken] = useState('');
   const [newResetPassword, setNewResetPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
@@ -81,37 +46,72 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
     e.preventDefault();
     setError(null);
     setInfoMessage(null);
+
+    // Client-side validations
+    if (mode === 'login') {
+      if (!email.trim() || !password) {
+        setError('Iltimos, email (yoki username) va parolni kiriting.');
+        return;
+      }
+    } else if (mode === 'register') {
+      if (!fullName.trim()) {
+        setError('Iltimos, to‘liq ism-sharifingizni kiriting.');
+        return;
+      }
+      if (!email.trim() || !email.includes('@')) {
+        setError('Iltimos, to‘g‘ri formatdagi email manzilini kiriting.');
+        return;
+      }
+      if (password.length < 8) {
+        setError('Parol kamida 8 ta belgidan iborat bo‘lishi shart.');
+        return;
+      }
+    } else if (mode === 'forgot') {
+      if (!resetToken) {
+        if (!email.trim() || !email.includes('@')) {
+          setError('Iltimos, ro‘yxatdan o‘tgan email manzilingizni kiriting.');
+          return;
+        }
+      } else {
+        if (newResetPassword.length < 8) {
+          setError('Yangi parol kamida 8 ta belgidan iborat bo‘lishi lozim.');
+          return;
+        }
+      }
+    }
+
     setLoading(true);
 
     try {
       if (mode === 'login') {
-        const res = await api.login({ email, password });
+        const res = await api.login({ email: email.trim(), password });
         setStoredToken(res.token);
         addToast({
           type: 'success',
           title: 'Xush kelibsiz!',
-          message: `${res.user.profile.full_name} sifatida tizimga kirdingiz.`,
+          message: `${res.user.profile?.full_name || res.user.username} sifatida tizimga kirdingiz.`,
         });
         onAuthenticated();
       } else if (mode === 'register') {
         const res = await api.register({
-          full_name: fullName,
-          email,
+          full_name: fullName.trim(),
+          email: email.trim(),
           password,
-          workspace_name: workspaceName,
-          job_title: jobTitle,
+          workspace_name: workspaceName.trim() || undefined,
+          job_title: jobTitle.trim() || undefined,
         });
         setStoredToken(res.token);
         addToast({
           type: 'success',
-          title: 'Hisob va Workspace yaratildi!',
+          title: 'Hisob muvaffaqiyatli yaratildi!',
           message: 'FlowForge platformasiga xush kelibsiz.',
         });
         onAuthenticated();
       } else {
+        // Forgot password workflow
         if (resetToken && newResetPassword) {
           const res = await api.resetPassword({
-            reset_token: resetToken,
+            reset_token: resetToken.trim(),
             new_password: newResetPassword,
           });
           addToast({ type: 'success', title: 'Parol yangilandi!', message: res.message });
@@ -120,7 +120,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
           setPassword(newResetPassword);
           setMode('login');
         } else {
-          const res = await api.forgotPassword(email);
+          const res = await api.forgotPassword(email.trim());
           setInfoMessage(res.message);
           if (res.reset_token) {
             setResetToken(res.reset_token);
@@ -130,180 +130,219 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
         }
       }
     } catch (err: any) {
-      setError(err.message || 'Xatolik yuz berdi');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const quickLogin = async (demoEmail: string) => {
-    setEmail(demoEmail);
-    setPassword('FlowForge!2026');
-    setError(null);
-    setLoading(true);
-    try {
-      const res = await api.login({ email: demoEmail, password: 'FlowForge!2026' });
-      setStoredToken(res.token);
-      addToast({
-        type: 'success',
-        title: 'Tezkor kirish bajarildi',
-        message: `${res.user.profile.full_name} hisobi faollashtirildi.`,
-      });
-      onAuthenticated();
-    } catch (err: any) {
-      setError(err.message || 'Login xatoligi');
+      setError(err.message || 'Xatolik yuz berdi. Qayta urinib ko‘ring.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen w-full bg-slate-950 text-slate-100 flex flex-col lg:flex-row overflow-y-auto">
-      {/* Left Brand & Architecture Showcase */}
-      <div className="lg:w-7/12 p-8 lg:p-14 flex flex-col justify-between bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950/50 border-b lg:border-b-0 lg:border-r border-slate-800/80 relative overflow-hidden">
+    <div className="min-h-screen w-full bg-[#090b10] text-slate-100 flex flex-col lg:flex-row overflow-y-auto select-none">
+      {/* =====================================================================
+          LEFT HERO & FEATURE SHOWCASE
+         ===================================================================== */}
+      <div className="lg:w-7/12 p-8 lg:p-14 flex flex-col justify-between bg-gradient-to-br from-[#0c0f17] via-[#0f1422] to-indigo-950/40 border-b lg:border-b-0 lg:border-r border-white/[0.08] relative overflow-hidden">
+        {/* Subtle ambient lighting */}
+        <div className="absolute top-0 left-0 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 right-0 w-96 h-96 bg-violet-600/10 rounded-full blur-3xl pointer-events-none" />
+
         <div className="relative z-10">
+          {/* Logo */}
           <div className="flex items-center gap-3 mb-8">
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-violet-500 flex items-center justify-center shadow-xl shadow-indigo-600/30">
               <Layers className="w-6 h-6 text-white" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-xl font-bold tracking-tight text-white">FlowForge</span>
-                <span className="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                <span className="text-xl font-extrabold tracking-tight text-white">FlowForge</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
                   Enterprise v2.0
                 </span>
               </div>
-              <p className="text-xs text-slate-400">Multi-Tenant SaaS · Yii2 REST API + React TypeScript</p>
+              <p className="text-xs text-slate-400">Zamonaviy Jamoaviy Boshqaruv va Multi-Tenant SaaS</p>
             </div>
           </div>
 
-          <h1 className="text-3xl lg:text-4xl font-bold text-white leading-tight max-w-2xl mb-4">
-            Jamoalar, Loyihalar va Murakkab Ish Oqimlarini Boshqarish Tizimi
+          <h1 className="text-3xl lg:text-5xl font-extrabold text-white leading-tight max-w-2xl mb-4 tracking-tight">
+            Loyiha, Jamoa va Ish Oqimlarini{' '}
+            <span className="bg-gradient-to-r from-indigo-400 via-violet-300 to-emerald-400 bg-clip-text text-transparent">
+              Yuqori Darajada
+            </span>{' '}
+            Boshqaring
           </h1>
           <p className="text-slate-400 text-sm lg:text-base max-w-2xl mb-8 leading-relaxed">
-            4-qatlamli ichma-ich navigatsiya (<span className="text-slate-200">Workspace ➔ Space ➔ Folder ➔ Project ➔ Sprint ➔ Task ➔ Subtask</span>),
-            server tomonidan himoyalangan RBAC ruxsatlar, Kanban Fractional Indexing, Vaqt hisobi va Loyiha Wiki hujjatlari.
+            Linear va ClickUp darajasidagi tezkor interfeys, 9 xil loyiha ko‘rinishi, YouTube Studio uslubidagi
+            ichma-ich navigatsiya hamda server darajasidagi qat’iy Multi-Tenant xavfsizlik.
           </p>
 
-          {/* 1-Click Role Verification Cards */}
-          <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-2xl p-5 max-w-2xl">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-indigo-400" />
-                <span className="text-xs font-semibold uppercase tracking-wider text-slate-300">
-                  Real Database Rollari — 1-Click Tekshirish (Parol: FlowForge!2026)
-                </span>
+          {/* Key Feature Highlights Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl">
+            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/[0.07] hover:border-indigo-500/40 transition">
+              <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center mb-2.5">
+                <Kanban className="w-4 h-4" />
               </div>
-              <span className="text-[11px] text-slate-500">Bosib darhol kiring</span>
+              <h3 className="text-xs font-bold text-white mb-1">9 Xil Loyiha Ko‘rinishi</h3>
+              <p className="text-[11px] text-slate-400 leading-normal">
+                Kanban (Swimlanes bilan), Ro‘yxat, Kalendar, Gantt/Timeline, Sprintlar va Wiki Docs.
+              </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {DEMO_ACCOUNTS.map((acc) => (
-                <button
-                  key={acc.email}
-                  type="button"
-                  disabled={loading}
-                  onClick={() => quickLogin(acc.email)}
-                  className="text-left p-3 rounded-xl bg-slate-950/70 hover:bg-slate-800/80 border border-slate-800/90 hover:border-indigo-500/50 transition group"
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-semibold text-white group-hover:text-indigo-300 transition">
-                      {acc.name}
-                    </span>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${acc.badgeColor}`}>
-                      {acc.roleBadge}
-                    </span>
-                  </div>
-                  <div className="text-[11px] text-slate-400 font-mono mb-1">{acc.email}</div>
-                  <p className="text-[11px] text-slate-500 line-clamp-2">{acc.desc}</p>
-                </button>
-              ))}
+            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/[0.07] hover:border-violet-500/40 transition">
+              <div className="w-8 h-8 rounded-xl bg-violet-500/20 text-violet-400 flex items-center justify-center mb-2.5">
+                <Layers className="w-4 h-4" />
+              </div>
+              <h3 className="text-xs font-bold text-white mb-1">Ichma-ich (Drill-Down) Navigatsiya</h3>
+              <p className="text-[11px] text-slate-400 leading-normal">
+                Interaktiv Breadcrumbs, qatlamli filtrlar va vazifa kartalaridagi tezkor <code>•••</code> amallar.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/[0.07] hover:border-emerald-500/40 transition">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center mb-2.5">
+                <ShieldCheck className="w-4 h-4" />
+              </div>
+              <h3 className="text-xs font-bold text-white mb-1">Qat’iy RBAC va Izolyatsiya</h3>
+              <p className="text-[11px] text-slate-400 leading-normal">
+                Owner, Admin, Member va Viewer rollari. IDOR himoyasi va faol sessiyalar nazorati.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/[0.07] hover:border-amber-500/40 transition">
+              <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center mb-2.5">
+                <Clock className="w-4 h-4" />
+              </div>
+              <h3 className="text-xs font-bold text-white mb-1">Jonli Taymer & Timesheet</h3>
+              <p className="text-[11px] text-slate-400 leading-normal">
+                Vazifalar ustida ishlash vaqtini jonli o‘lchash va avtomatlashtirilgan hisobotlar.
+              </p>
             </div>
           </div>
         </div>
 
-        <div className="relative z-10 mt-8 pt-6 border-t border-slate-800/80 flex flex-wrap items-center gap-6 text-xs text-slate-400">
+        {/* Bottom Trust Badges */}
+        <div className="relative z-10 mt-8 pt-6 border-t border-white/[0.07] flex flex-wrap items-center gap-6 text-xs text-slate-400">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            <span>Yii2 ActiveRecord & 24-Jadval Migratsiya</span>
+            <span>Yii2 REST API & 28+ Jadval</span>
           </div>
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            <span>JWT Sessiya & Qurilmalar Nazorati</span>
+            <span>React 19 & TypeScript SPA</span>
           </div>
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            <span>Qat’iy Tenant Isolation (IDOR Himoyasi)</span>
+            <span>JWT & Multi-Session Guard</span>
           </div>
         </div>
       </div>
 
-      {/* Right Authentication Form */}
-      <div className="lg:w-5/12 p-8 lg:p-14 flex items-center justify-center bg-slate-950">
+      {/* =====================================================================
+          RIGHT AUTHENTICATION FORM (SIGN IN / SIGN UP / FORGOT)
+         ===================================================================== */}
+      <div className="lg:w-5/12 p-8 lg:p-14 flex items-center justify-center bg-[#090b10]">
         <div className="w-full max-w-md">
-          <div className="flex rounded-xl bg-slate-900 p-1 border border-slate-800 mb-6">
+          {/* Segmented Mode Switcher */}
+          {mode !== 'forgot' ? (
+            <div className="flex rounded-2xl bg-[#121622] p-1 border border-white/[0.08] mb-6 shadow-inner">
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('login');
+                  setError(null);
+                  setInfoMessage(null);
+                }}
+                className={`flex-1 py-2 text-xs font-bold rounded-xl transition ${
+                  mode === 'login'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Kirish (Sign In)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('register');
+                  setError(null);
+                  setInfoMessage(null);
+                }}
+                className={`flex-1 py-2 text-xs font-bold rounded-xl transition ${
+                  mode === 'register'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Ro‘yxatdan o‘tish (Sign Up)
+              </button>
+            </div>
+          ) : (
             <button
               type="button"
-              onClick={() => { setMode('login'); setError(null); setInfoMessage(null); }}
-              className={`flex-1 py-2 text-xs font-semibold rounded-lg transition ${
-                mode === 'login' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'
-              }`}
+              onClick={() => {
+                setMode('login');
+                setError(null);
+                setInfoMessage(null);
+              }}
+              className="inline-flex items-center gap-2 text-xs font-semibold text-indigo-400 hover:text-indigo-300 mb-6 transition group"
             >
-              Kirish (Login)
+              <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition" />
+              <span>Kirish oynasiga qaytish</span>
             </button>
-            <button
-              type="button"
-              onClick={() => { setMode('register'); setError(null); setInfoMessage(null); }}
-              className={`flex-1 py-2 text-xs font-semibold rounded-lg transition ${
-                mode === 'register' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Ro‘yxatdan o‘tish
-            </button>
-            <button
-              type="button"
-              onClick={() => { setMode('forgot'); setError(null); setInfoMessage(null); }}
-              className={`flex-1 py-2 text-xs font-semibold rounded-lg transition ${
-                mode === 'forgot' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Parolni tiklash
-            </button>
-          </div>
+          )}
 
+          {/* Form Header */}
           <div className="mb-6">
-            <h2 className="text-2xl font-bold text-white mb-1">
+            <h2 className="text-2xl font-extrabold text-white mb-1.5 tracking-tight">
               {mode === 'login' && 'Hisobingizga kiring'}
               {mode === 'register' && 'Yangi hisob va Workspace ochish'}
               {mode === 'forgot' && 'Parolni qayta tiklash'}
             </h2>
             <p className="text-xs text-slate-400">
-              {mode === 'login' && 'Email (yoki username) hamda parolingizni kiriting.'}
-              {mode === 'register' && 'Ro‘yxatdan o‘tishingiz bilan shaxsiy Workspace va ilk loyihangiz avtomatik yaratiladi.'}
-              {mode === 'forgot' && 'Ro‘yxatdan o‘tgan email manzilingizni kiriting.'}
+              {mode === 'login' && 'Elektron pochta (yoki username) va parolingizni kiriting.'}
+              {mode === 'register' &&
+                'Ro‘yxatdan o‘tishingiz bilan shaxsiy Workspace va ilk loyihangiz avtomatik yaratiladi.'}
+              {mode === 'forgot' && 'Ro‘yxatdan o‘tgan email manzilingizga tiklash kodi yuboriladi.'}
             </p>
           </div>
 
+          {/* Error Alert */}
           {error && (
-            <div className="mb-4 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-start gap-2.5 text-rose-300 text-xs">
+            <div className="mb-4 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-start gap-2.5 text-rose-300 text-xs animate-popover">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
-              <span>{error}</span>
+              <div className="flex-1 leading-relaxed">{error}</div>
+              <button
+                type="button"
+                onClick={() => setError(null)}
+                className="text-rose-400 hover:text-rose-200"
+              >
+                ✕
+              </button>
             </div>
           )}
 
+          {/* Info Alert */}
           {infoMessage && (
-            <div className="mb-4 p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-2.5 text-emerald-300 text-xs">
+            <div className="mb-4 p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-2.5 text-emerald-300 text-xs animate-popover">
               <Sparkles className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
-              <span>{infoMessage}</span>
+              <div className="flex-1 leading-relaxed">{infoMessage}</div>
+              <button
+                type="button"
+                onClick={() => setInfoMessage(null)}
+                className="text-emerald-400 hover:text-emerald-200"
+              >
+                ✕
+              </button>
             </div>
           )}
 
+          {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* REGISTER-ONLY FIELDS */}
             {mode === 'register' && (
               <>
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                    To‘liq ism-sharifingiz *
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    To‘liq ism-sharifingiz <span className="text-rose-400">*</span>
                   </label>
                   <div className="relative">
                     <UserIcon className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
@@ -313,15 +352,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
                       placeholder="Masalan: Sardorbek Alimov"
-                      className="w-full pl-10 pr-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:border-indigo-500"
+                      className="w-full pl-10 pr-4 py-2.5 bg-[#121622] border border-white/[0.09] rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition"
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                      Kompaniya / Workspace nomi
+                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                      Workspace / Kompaniya
                     </label>
                     <div className="relative">
                       <Building2 className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
@@ -330,12 +369,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
                         value={workspaceName}
                         onChange={(e) => setWorkspaceName(e.target.value)}
                         placeholder="Acme Studio"
-                        className="w-full pl-10 pr-3 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:border-indigo-500"
+                        className="w-full pl-10 pr-3 py-2.5 bg-[#121622] border border-white/[0.09] rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition"
                       />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                       Lavozimingiz
                     </label>
                     <div className="relative">
@@ -344,8 +383,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
                         type="text"
                         value={jobTitle}
                         onChange={(e) => setJobTitle(e.target.value)}
-                        placeholder="Team Lead"
-                        className="w-full pl-10 pr-3 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:border-indigo-500"
+                        placeholder="Team Lead / Dasturchi"
+                        className="w-full pl-10 pr-3 py-2.5 bg-[#121622] border border-white/[0.09] rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition"
                       />
                     </div>
                   </div>
@@ -353,92 +392,171 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
               </>
             )}
 
+            {/* EMAIL (ALL MODES) */}
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                Email manzili {mode === 'login' && '(yoki username)'} *
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                Email manzili {mode === 'login' && 'yoki foydalanuvchi nomi'}{' '}
+                <span className="text-rose-400">*</span>
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
                 <input
-                  type="text"
+                  type={mode === 'login' ? 'text' : 'email'}
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@company.uz"
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:border-indigo-500"
+                  placeholder={mode === 'login' ? 'name@company.uz yoki username' : 'name@company.uz'}
+                  className="w-full pl-10 pr-4 py-2.5 bg-[#121622] border border-white/[0.09] rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition"
                 />
               </div>
             </div>
 
+            {/* PASSWORD (LOGIN & REGISTER) */}
             {mode !== 'forgot' && (
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                  Parol *
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-300">
+                    Parol <span className="text-rose-400">*</span>
+                  </label>
+                  {mode === 'login' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode('forgot');
+                        setError(null);
+                        setInfoMessage(null);
+                      }}
+                      className="text-xs text-indigo-400 hover:text-indigo-300 font-medium transition"
+                    >
+                      Parolni unutdingizmi?
+                    </button>
+                  )}
+                </div>
                 <div className="relative">
                   <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
                   <input
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     required
                     minLength={8}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••••••"
-                    className="w-full pl-10 pr-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:border-indigo-500"
+                    className="w-full pl-10 pr-10 py-2.5 bg-[#121622] border border-white/[0.09] rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="absolute right-3.5 top-3 text-slate-400 hover:text-white transition"
+                    title={showPassword ? 'Parolni yashirish' : 'Parolni ko‘rsatish'}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
+                {mode === 'register' && (
+                  <p className="mt-1 text-[11px] text-slate-500">Kamida 8 ta belgidan iborat bo‘lishi lozim.</p>
+                )}
               </div>
             )}
 
+            {/* FORGOT PASSWORD RESET TOKEN & NEW PASSWORD */}
             {mode === 'forgot' && resetToken && (
-              <div className="space-y-3 p-3.5 rounded-xl bg-indigo-950/30 border border-indigo-500/40">
+              <div className="space-y-3.5 p-4 rounded-2xl bg-indigo-950/20 border border-indigo-500/30 animate-popover">
                 <div>
-                  <label className="block text-[11px] font-semibold text-indigo-300 mb-1">
-                    Tasdiqlash Tokeni (Avto-to‘ldirildi)
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-indigo-300 mb-1">
+                    Tasdiqlash Tokeni
                   </label>
                   <input
                     type="text"
                     required
                     value={resetToken}
                     onChange={(e) => setResetToken(e.target.value)}
-                    className="w-full px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs font-mono text-slate-300"
+                    className="w-full px-3 py-2 bg-black/40 border border-white/[0.08] rounded-xl text-xs font-mono text-slate-300 focus:outline-none focus:border-indigo-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-white mb-1">
-                    Yangi parolni kiriting (kamida 8 ta belgi) *
+                  <label className="block text-xs font-semibold text-white mb-1.5">
+                    Yangi parolni kiriting (kamida 8 ta belgi) <span className="text-rose-400">*</span>
                   </label>
-                  <input
-                    type="password"
-                    required
-                    minLength={8}
-                    value={newResetPassword}
-                    onChange={(e) => setNewResetPassword(e.target.value)}
-                    placeholder="Yangi parol..."
-                    className="w-full px-3.5 py-2 bg-slate-950 border border-indigo-500 rounded-xl text-sm text-white"
-                  />
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      required
+                      minLength={8}
+                      value={newResetPassword}
+                      onChange={(e) => setNewResetPassword(e.target.value)}
+                      placeholder="Yangi parol..."
+                      className="w-full pl-10 pr-10 py-2.5 bg-black/40 border border-indigo-500/60 rounded-xl text-sm text-white focus:outline-none focus:border-indigo-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword((v) => !v)}
+                      className="absolute right-3.5 top-3 text-slate-400 hover:text-white transition"
+                    >
+                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
 
+            {/* SUBMIT BUTTON */}
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-sm rounded-xl shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 transition"
+              className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-sm rounded-xl shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 transition active:scale-[0.99] cursor-pointer"
             >
-              <span>
-                {loading
-                  ? 'Bajarilmoqda...'
-                  : mode === 'login'
-                  ? 'Tizimga kirish'
-                  : mode === 'register'
-                  ? 'Hisob yaratish va Boshlash'
-                  : resetToken
-                  ? 'Yangi parolni saqlash'
-                  : 'Tiklash kodini olish'}
-              </span>
-              <ArrowRight className="w-4 h-4" />
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Tekshirilmoqda...</span>
+                </div>
+              ) : (
+                <>
+                  <span>
+                    {mode === 'login' && 'Tizimga kirish'}
+                    {mode === 'register' && 'Hisob yaratish va Boshlash'}
+                    {mode === 'forgot' && (resetToken ? 'Yangi parolni saqlash' : 'Tiklash kodini olish')}
+                  </span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
             </button>
+
+            {/* BOTTOM HELPER SWITCH LINKS */}
+            <div className="pt-2 text-center text-xs text-slate-400">
+              {mode === 'login' ? (
+                <div>
+                  Hisobingiz yo‘qmi?{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('register');
+                      setError(null);
+                      setInfoMessage(null);
+                    }}
+                    className="font-bold text-indigo-400 hover:text-indigo-300 transition"
+                  >
+                    Ro‘yxatdan o‘tish
+                  </button>
+                </div>
+              ) : mode === 'register' ? (
+                <div>
+                  Allaqachon hisobingiz bormi?{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('login');
+                      setError(null);
+                      setInfoMessage(null);
+                    }}
+                    className="font-bold text-indigo-400 hover:text-indigo-300 transition"
+                  >
+                    Kirish
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </form>
         </div>
       </div>

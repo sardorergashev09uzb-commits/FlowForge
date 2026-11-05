@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Plus,
   Search,
@@ -16,8 +16,20 @@ import {
   Flag,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Edit3,
   Archive,
+  SlidersHorizontal,
+  Filter,
+  Check,
+  MoreHorizontal,
+  Sparkles,
+  Copy,
+  Layers,
+  Columns,
+  User,
+  Tag,
+  Share2,
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAppStore } from '../../store/useAppStore';
@@ -72,6 +84,31 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
 
   // List View Bulk selection
   const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>([]);
+
+  // Nested Multi-Level Filter Popover State (Linear Style)
+  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+  const [filterMenuDrill, setFilterMenuDrill] = useState<'root' | 'priority' | 'assignee' | 'sprint' | 'label'>('root');
+  const [filterAssigneeSearch, setFilterAssigneeSearch] = useState('');
+  const filterMenuRef = useRef<HTMLDivElement>(null);
+
+  // Swimlanes / Grouping Dropdown State
+  const [swimlaneDropdownOpen, setSwimlaneDropdownOpen] = useState(false);
+  const swimlaneMenuRef = useRef<HTMLDivElement>(null);
+
+  // Split Creation Dropdown State
+  const [createSplitOpen, setCreateSplitOpen] = useState(false);
+  const createSplitRef = useRef<HTMLDivElement>(null);
+
+  // Contextual Card & List Row Action Drill-Down Menu State ('•••')
+  const [cardMenuTaskId, setCardMenuTaskId] = useState<number | null>(null);
+  const [cardMenuDrill, setCardMenuDrill] = useState<'root' | 'status' | 'priority' | 'assignee'>('root');
+  const [cardMenuAssigneeSearch, setCardMenuAssigneeSearch] = useState('');
+  const cardMenuRef = useRef<HTMLDivElement>(null);
+
+  // Bulk Actions Floating Dock Dropdown States
+  const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
+  const [bulkPriorityOpen, setBulkPriorityOpen] = useState(false);
+  const [bulkAssigneeOpen, setBulkAssigneeOpen] = useState(false);
 
   // Docs state
   const [activeDoc, setActiveDoc] = useState<ProjectDoc | null>(null);
@@ -147,6 +184,28 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
     setSelectedTaskIds([]);
     loadProjectAndTasks();
   }, [projectId, searchQ, filterPriority, filterAssignee, filterSprint, filterLabel, refreshTrigger]);
+
+  // Handle outside clicks for inner popovers
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (filterMenuRef.current && !filterMenuRef.current.contains(e.target as Node)) {
+        setFilterMenuOpen(false);
+        setFilterMenuDrill('root');
+      }
+      if (swimlaneMenuRef.current && !swimlaneMenuRef.current.contains(e.target as Node)) {
+        setSwimlaneDropdownOpen(false);
+      }
+      if (createSplitRef.current && !createSplitRef.current.contains(e.target as Node)) {
+        setCreateSplitOpen(false);
+      }
+      if (cardMenuRef.current && !cardMenuRef.current.contains(e.target as Node)) {
+        setCardMenuTaskId(null);
+        setCardMenuDrill('root');
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
 
   if (!project) {
     return (
@@ -312,7 +371,261 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
               </span>
             )}
           </div>
-          {renderPriorityBadge(task.priority)}
+          <div className="flex items-center gap-1.5">
+            {renderPriorityBadge(task.priority)}
+
+            {/* Quick Context Action Menu ('•••') */}
+            <div className="relative" ref={cardMenuTaskId === task.id ? cardMenuRef : undefined}>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCardMenuTaskId((id) => (id === task.id ? null : task.id));
+                  setCardMenuDrill('root');
+                  setCardMenuAssigneeSearch('');
+                }}
+                className={`p-1 rounded-md transition ${
+                  cardMenuTaskId === task.id
+                    ? 'bg-indigo-600 text-white opacity-100'
+                    : 'opacity-0 group-hover:opacity-100 hover:bg-white/[0.1] text-slate-400 hover:text-white'
+                }`}
+                title="Tezkor ichki amallar"
+              >
+                <MoreHorizontal className="w-3.5 h-3.5" />
+              </button>
+
+              {cardMenuTaskId === task.id && (
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute right-0 top-6 w-56 rounded-2xl bg-[#141824] border border-white/[0.1] shadow-2xl p-1.5 z-50 animate-popover text-left cursor-default"
+                >
+                  {/* LEVEL: ROOT */}
+                  {cardMenuDrill === 'root' && (
+                    <div className="divide-y divide-white/[0.06]">
+                      <div className="py-1">
+                        <button
+                          onClick={() => setCardMenuDrill('status')}
+                          className="w-full px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06] flex items-center justify-between text-xs text-slate-200"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Columns className="w-3.5 h-3.5 text-indigo-400" />
+                            <span>Statusni ko‘chirish</span>
+                          </div>
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                        </button>
+
+                        <button
+                          onClick={() => setCardMenuDrill('priority')}
+                          className="w-full px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06] flex items-center justify-between text-xs text-slate-200"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Flag className="w-3.5 h-3.5 text-amber-400" />
+                            <span>Ustuvorlik (Priority)</span>
+                          </div>
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                        </button>
+
+                        <button
+                          onClick={() => setCardMenuDrill('assignee')}
+                          className="w-full px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06] flex items-center justify-between text-xs text-slate-200"
+                        >
+                          <div className="flex items-center gap-2">
+                            <User className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Mas’ulni biriktirish</span>
+                          </div>
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                        </button>
+                      </div>
+
+                      <div className="py-1">
+                        <button
+                          onClick={async () => {
+                            setCardMenuTaskId(null);
+                            await api.updateTask(task.id, { is_milestone: !task.is_milestone });
+                            await loadProjectAndTasks();
+                            onRefreshHierarchy();
+                            addToast({
+                              type: 'info',
+                              title: task.is_milestone
+                                ? 'Milestone bekor qilindi'
+                                : 'Milestone sifatida belgilandi',
+                            });
+                          }}
+                          className="w-full px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06] flex items-center gap-2 text-xs text-slate-200"
+                        >
+                          <Star className={`w-3.5 h-3.5 ${task.is_milestone ? 'text-amber-400 fill-current' : 'text-slate-400'}`} />
+                          <span>{task.is_milestone ? 'Milestoneni bekor qilish' : '★ Milestone qilish'}</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setCardMenuTaskId(null);
+                            navigator.clipboard.writeText(`${task.task_key}: ${task.title}`);
+                            addToast({ type: 'success', title: `${task.task_key} nusxalandi` });
+                          }}
+                          className="w-full px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06] flex items-center gap-2 text-xs text-slate-200"
+                        >
+                          <Copy className="w-3.5 h-3.5 text-indigo-400" />
+                          <span>Kodni nusxalash</span>
+                        </button>
+                      </div>
+
+                      <div className="pt-1">
+                        <button
+                          onClick={async () => {
+                            setCardMenuTaskId(null);
+                            await api.deleteTask(task.id);
+                            await loadProjectAndTasks();
+                            onRefreshHierarchy();
+                            addToast({ type: 'info', title: `${task.task_key} savatga o‘tkazildi` });
+                          }}
+                          className="w-full px-2.5 py-1.5 rounded-lg hover:bg-rose-500/20 text-rose-400 flex items-center gap-2 text-xs"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Savatga o‘chirish</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* LEVEL: STATUS */}
+                  {cardMenuDrill === 'status' && (
+                    <div className="space-y-1">
+                      <button
+                        onClick={() => setCardMenuDrill('root')}
+                        className="w-full px-2 py-1 mb-1 rounded-lg hover:bg-white/[0.06] flex items-center gap-1.5 text-[11px] font-semibold text-indigo-300"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                        <span>Statuslar</span>
+                      </button>
+                      {statuses.map((st) => (
+                        <button
+                          key={st.id}
+                          onClick={async () => {
+                            setCardMenuTaskId(null);
+                            await handleDropOnColumn(st.id);
+                          }}
+                          className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs transition ${
+                            task.status_id === st.id
+                              ? 'bg-indigo-600/20 text-white font-bold border border-indigo-500/30'
+                              : 'text-slate-300 hover:bg-white/[0.06]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: st.color }} />
+                            <span className="truncate">{st.name}</span>
+                          </div>
+                          {task.status_id === st.id && <Check className="w-3 h-3 text-indigo-400 shrink-0" />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* LEVEL: PRIORITY */}
+                  {cardMenuDrill === 'priority' && (
+                    <div className="space-y-1">
+                      <button
+                        onClick={() => setCardMenuDrill('root')}
+                        className="w-full px-2 py-1 mb-1 rounded-lg hover:bg-white/[0.06] flex items-center gap-1.5 text-[11px] font-semibold text-indigo-300"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                        <span>Ustuvorlik</span>
+                      </button>
+                      {[
+                        { key: 'urgent', label: '🔥 Urgent', color: 'text-rose-400' },
+                        { key: 'high', label: '⬆️ High', color: 'text-amber-400' },
+                        { key: 'medium', label: '⏺ Medium', color: 'text-indigo-400' },
+                        { key: 'low', label: '⬇️ Low', color: 'text-sky-400' },
+                      ].map((prio) => (
+                        <button
+                          key={prio.key}
+                          onClick={async () => {
+                            setCardMenuTaskId(null);
+                            await api.updateTask(task.id, { priority: prio.key });
+                            await loadProjectAndTasks();
+                            onRefreshHierarchy();
+                          }}
+                          className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs transition ${
+                            task.priority === prio.key
+                              ? 'bg-white/[0.08] text-white font-bold'
+                              : 'text-slate-300 hover:bg-white/[0.06]'
+                          }`}
+                        >
+                          <span className={prio.color}>{prio.label}</span>
+                          {task.priority === prio.key && <Check className="w-3 h-3 text-indigo-400" />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* LEVEL: ASSIGNEE */}
+                  {cardMenuDrill === 'assignee' && (
+                    <div className="space-y-1">
+                      <button
+                        onClick={() => setCardMenuDrill('root')}
+                        className="w-full px-2 py-1 mb-1 rounded-lg hover:bg-white/[0.06] flex items-center gap-1.5 text-[11px] font-semibold text-indigo-300"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                        <span>Mas’ul</span>
+                      </button>
+                      <input
+                        type="text"
+                        autoFocus
+                        value={cardMenuAssigneeSearch}
+                        onChange={(e) => setCardMenuAssigneeSearch(e.target.value)}
+                        placeholder="A’zoni qidiring..."
+                        className="w-full px-2.5 py-1 rounded-lg bg-black/40 border border-white/[0.08] text-xs text-white mb-1.5 focus:outline-none focus:border-indigo-500"
+                      />
+                      <div className="max-h-48 overflow-y-auto space-y-0.5">
+                        <button
+                          onClick={async () => {
+                            setCardMenuTaskId(null);
+                            await api.updateTask(task.id, { assignee_id: null });
+                            await loadProjectAndTasks();
+                            onRefreshHierarchy();
+                          }}
+                          className={`w-full px-2 py-1 rounded-lg flex items-center justify-between text-xs transition ${
+                            !task.assignee_id ? 'bg-white/[0.08] text-white font-semibold' : 'text-slate-400 hover:bg-white/[0.06]'
+                          }`}
+                        >
+                          <span>Tayinlanmagan</span>
+                          {!task.assignee_id && <Check className="w-3 h-3 text-indigo-400" />}
+                        </button>
+                        {members
+                          .filter((m) =>
+                            !cardMenuAssigneeSearch ||
+                            m.full_name.toLowerCase().includes(cardMenuAssigneeSearch.toLowerCase())
+                          )
+                          .map((m) => (
+                            <button
+                              key={m.user_id}
+                              onClick={async () => {
+                                setCardMenuTaskId(null);
+                                await api.updateTask(task.id, { assignee_id: m.user_id });
+                                await loadProjectAndTasks();
+                                onRefreshHierarchy();
+                              }}
+                              className={`w-full px-2 py-1 rounded-lg flex items-center justify-between text-xs transition ${
+                                task.assignee_id === m.user_id
+                                  ? 'bg-indigo-600/20 text-white font-bold border border-indigo-500/30'
+                                  : 'text-slate-300 hover:bg-white/[0.06]'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 truncate">
+                                <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-[9px] font-bold text-white shrink-0">
+                                  {m.full_name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
+                                </div>
+                                <span className="truncate">{m.full_name}</span>
+                              </div>
+                              {task.assignee_id === m.user_id && <Check className="w-3 h-3 text-indigo-400 shrink-0" />}
+                            </button>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Title */}
@@ -496,114 +809,530 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
     return new Date(tickMs).toISOString().slice(5, 10);
   });
 
+  const activeFilterCount =
+    (filterPriority ? 1 : 0) +
+    (filterAssignee ? 1 : 0) +
+    (filterSprint ? 1 : 0) +
+    (filterLabel ? 1 : 0);
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Shared Filter & Search Bar for Board / List / Calendar / Timeline */}
+      {/* Shared Filter & Action Bar for Board / List / Calendar / Timeline */}
       {['board', 'list', 'calendar', 'timeline'].includes(projectTab) && (
-        <div className="px-6 py-3 bg-slate-900/60 border-b border-slate-800/80 flex flex-wrap items-center justify-between gap-3 shrink-0">
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="px-6 py-2.5 bg-[#0e121c]/95 border-b border-white/[0.07] flex flex-wrap items-center justify-between gap-3 shrink-0">
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Search Input */}
             <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5" />
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
               <input
                 type="text"
                 value={searchQ}
                 onChange={(e) => setSearchQ(e.target.value)}
-                placeholder="Vazifa qidirish (FF-1)..."
-                className="pl-8 pr-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500 w-48"
+                placeholder="Vazifalarni qidiring (FF-1)..."
+                className="pl-8 pr-7 py-1.5 rounded-xl bg-slate-950/80 border border-white/[0.08] text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 w-52 transition"
               />
+              {searchQ && (
+                <button
+                  onClick={() => setSearchQ('')}
+                  className="absolute right-2.5 top-2 text-slate-400 hover:text-white text-xs"
+                >
+                  ✕
+                </button>
+              )}
             </div>
 
-            <select
-              value={filterPriority}
-              onChange={(e) => setFilterPriority(e.target.value)}
-              className="px-2.5 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300"
-            >
-              <option value="">Barcha ustuvorliklar</option>
-              <option value="urgent">🔥 Urgent</option>
-              <option value="high">⬆️ High</option>
-              <option value="medium">⏺ Medium</option>
-              <option value="low">⬇️ Low</option>
-            </select>
-
-            <select
-              value={filterAssignee}
-              onChange={(e) => setFilterAssignee(e.target.value)}
-              className="px-2.5 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300"
-            >
-              <option value="">Barcha mas’ullar</option>
-              <option value="unassigned">Tayinlanmagan</option>
-              {members.map((m) => (
-                <option key={m.user_id} value={m.user_id}>
-                  {m.full_name}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={filterSprint}
-              onChange={(e) => setFilterSprint(e.target.value)}
-              className="px-2.5 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300"
-            >
-              <option value="">Barcha Sprintlar</option>
-              {project.sprints?.map((sp) => (
-                <option key={sp.id} value={sp.id}>
-                  {sp.name} ({sp.status})
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={filterLabel}
-              onChange={(e) => setFilterLabel(e.target.value)}
-              className="px-2.5 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300"
-            >
-              <option value="">Barcha Teglar</option>
-              {labels.map((l) => (
-                <option key={l.id} value={l.id}>
-                  🏷 {l.name}
-                </option>
-              ))}
-            </select>
-
-            {(searchQ || filterPriority || filterAssignee || filterSprint || filterLabel) && (
+            {/* Nested Multi-Level Filter Popover (Linear Style) */}
+            <div className="relative" ref={filterMenuRef}>
               <button
                 onClick={() => {
-                  setSearchQ('');
-                  setFilterPriority('');
-                  setFilterAssignee('');
-                  setFilterSprint('');
-                  setFilterLabel('');
+                  setFilterMenuOpen((v) => !v);
+                  setFilterMenuDrill('root');
                 }}
-                className="text-xs text-rose-400 hover:text-rose-300 px-2"
-              >
-                Tozalash ×
-              </button>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            {projectTab === 'board' && (
-              <select
-                value={swimlaneBy}
-                onChange={(e) => setSwimlaneBy(e.target.value as any)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition ${
-                  swimlaneBy !== 'none'
-                    ? 'bg-indigo-600/20 border-indigo-500 text-indigo-300'
-                    : 'bg-slate-950 border-slate-800 text-slate-300'
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold border transition ${
+                  activeFilterCount > 0
+                    ? 'bg-indigo-600/20 border-indigo-500/50 text-indigo-300 shadow-sm'
+                    : 'bg-slate-950/80 border-white/[0.08] text-slate-300 hover:bg-white/[0.06] hover:text-white'
                 }`}
               >
-                <option value="none">Swimlanes: O‘chiq (Oddiy ustunlar)</option>
-                <option value="priority">Swimlanes: Ustuvorlik (Priority) bo‘yicha</option>
-                <option value="assignee">Swimlanes: Mas’ul shaxs (Assignee) bo‘yicha</option>
-              </select>
+                <Filter className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Filtrlar</span>
+                {activeFilterCount > 0 && (
+                  <span className="w-4 h-4 rounded-full bg-indigo-600 text-white text-[10px] font-bold flex items-center justify-center">
+                    {activeFilterCount}
+                  </span>
+                )}
+                <ChevronDown className="w-3 h-3 text-slate-400" />
+              </button>
+
+              {filterMenuOpen && (
+                <div className="absolute left-0 mt-2 w-72 rounded-2xl bg-[#141824] border border-white/[0.1] shadow-2xl p-2 z-50 animate-popover">
+                  {/* ROOT LEVEL OF FILTERS */}
+                  {filterMenuDrill === 'root' && (
+                    <div className="space-y-1">
+                      <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-white/[0.06] flex items-center justify-between mb-1">
+                        <span>Ichma-ich Filtrlar</span>
+                        {activeFilterCount > 0 && (
+                          <button
+                            onClick={() => {
+                              setFilterPriority('');
+                              setFilterAssignee('');
+                              setFilterSprint('');
+                              setFilterLabel('');
+                              setFilterMenuOpen(false);
+                            }}
+                            className="text-rose-400 hover:text-rose-300 normal-case text-[11px] font-semibold"
+                          >
+                            Tozalash
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Priority Row */}
+                      <button
+                        onClick={() => setFilterMenuDrill('priority')}
+                        className="w-full px-3 py-2 rounded-xl hover:bg-white/[0.06] flex items-center justify-between text-xs text-slate-200 transition"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <Flag className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Ustuvorlik (Priority)</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-slate-400 text-[11px]">
+                          <span className="capitalize">{filterPriority || 'Barchasi'}</span>
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                        </div>
+                      </button>
+
+                      {/* Assignee Row */}
+                      <button
+                        onClick={() => {
+                          setFilterMenuDrill('assignee');
+                          setFilterAssigneeSearch('');
+                        }}
+                        className="w-full px-3 py-2 rounded-xl hover:bg-white/[0.06] flex items-center justify-between text-xs text-slate-200 transition"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <User className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Mas’ul shaxs (Assignee)</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-slate-400 text-[11px] max-w-[100px] truncate">
+                          <span className="truncate">
+                            {filterAssignee === 'unassigned'
+                              ? 'Tayinlanmagan'
+                              : members.find((m) => String(m.user_id) === filterAssignee)?.full_name || 'Barchasi'}
+                          </span>
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                        </div>
+                      </button>
+
+                      {/* Sprint Row */}
+                      <button
+                        onClick={() => setFilterMenuDrill('sprint')}
+                        className="w-full px-3 py-2 rounded-xl hover:bg-white/[0.06] flex items-center justify-between text-xs text-slate-200 transition"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <CalendarIcon className="w-3.5 h-3.5 text-indigo-400" />
+                          <span>Sprint</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-slate-400 text-[11px] max-w-[100px] truncate">
+                          <span className="truncate">
+                            {project.sprints?.find((sp) => String(sp.id) === filterSprint)?.name || 'Barchasi'}
+                          </span>
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                        </div>
+                      </button>
+
+                      {/* Label Row */}
+                      <button
+                        onClick={() => setFilterMenuDrill('label')}
+                        className="w-full px-3 py-2 rounded-xl hover:bg-white/[0.06] flex items-center justify-between text-xs text-slate-200 transition"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <Tag className="w-3.5 h-3.5 text-rose-400" />
+                          <span>Teglar (Labels)</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-slate-400 text-[11px] max-w-[100px] truncate">
+                          <span className="truncate">
+                            {labels.find((l) => String(l.id) === filterLabel)?.name || 'Barchasi'}
+                          </span>
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                        </div>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* SUB-LEVEL: PRIORITY */}
+                  {filterMenuDrill === 'priority' && (
+                    <div className="space-y-1">
+                      <button
+                        onClick={() => setFilterMenuDrill('root')}
+                        className="w-full px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06] flex items-center gap-2 text-xs font-semibold text-indigo-300 mb-1"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                        <span>Ustuvorlik bo‘yicha</span>
+                      </button>
+                      {[
+                        { key: '', label: 'Barcha ustuvorliklar' },
+                        { key: 'urgent', label: '🔥 Urgent (Shoshilinch)' },
+                        { key: 'high', label: '⬆️ High (Yuqori)' },
+                        { key: 'medium', label: '⏺ Medium (O‘rta)' },
+                        { key: 'low', label: '⬇️ Low (Past)' },
+                      ].map((item) => (
+                        <button
+                          key={item.key}
+                          onClick={() => {
+                            setFilterPriority(item.key);
+                            setFilterMenuDrill('root');
+                          }}
+                          className={`w-full px-3 py-2 rounded-xl flex items-center justify-between text-xs transition ${
+                            filterPriority === item.key
+                              ? 'bg-indigo-600/20 text-white font-bold border border-indigo-500/30'
+                              : 'text-slate-300 hover:bg-white/[0.06]'
+                          }`}
+                        >
+                          <span>{item.label}</span>
+                          {filterPriority === item.key && <Check className="w-3.5 h-3.5 text-indigo-400" />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* SUB-LEVEL: ASSIGNEE */}
+                  {filterMenuDrill === 'assignee' && (
+                    <div className="space-y-1">
+                      <button
+                        onClick={() => setFilterMenuDrill('root')}
+                        className="w-full px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06] flex items-center gap-2 text-xs font-semibold text-indigo-300 mb-1"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                        <span>Mas’ul shaxs bo‘yicha</span>
+                      </button>
+                      <input
+                        type="text"
+                        autoFocus
+                        value={filterAssigneeSearch}
+                        onChange={(e) => setFilterAssigneeSearch(e.target.value)}
+                        placeholder="A’zoni qidiring..."
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-black/40 border border-white/[0.1] text-xs text-white mb-2 focus:outline-none focus:border-indigo-500"
+                      />
+                      <div className="max-h-52 overflow-y-auto space-y-0.5">
+                        <button
+                          onClick={() => {
+                            setFilterAssignee('');
+                            setFilterMenuDrill('root');
+                          }}
+                          className={`w-full px-3 py-1.5 rounded-xl flex items-center justify-between text-xs transition ${
+                            !filterAssignee ? 'bg-white/[0.08] text-white font-bold' : 'text-slate-300 hover:bg-white/[0.06]'
+                          }`}
+                        >
+                          <span>Barcha mas’ullar</span>
+                          {!filterAssignee && <Check className="w-3.5 h-3.5 text-indigo-400" />}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setFilterAssignee('unassigned');
+                            setFilterMenuDrill('root');
+                          }}
+                          className={`w-full px-3 py-1.5 rounded-xl flex items-center justify-between text-xs transition ${
+                            filterAssignee === 'unassigned' ? 'bg-white/[0.08] text-white font-bold' : 'text-slate-300 hover:bg-white/[0.06]'
+                          }`}
+                        >
+                          <span>Tayinlanmagan</span>
+                          {filterAssignee === 'unassigned' && <Check className="w-3.5 h-3.5 text-indigo-400" />}
+                        </button>
+                        {members
+                          .filter((m) =>
+                            !filterAssigneeSearch ||
+                            m.full_name.toLowerCase().includes(filterAssigneeSearch.toLowerCase())
+                          )
+                          .map((m) => (
+                            <button
+                              key={m.user_id}
+                              onClick={() => {
+                                setFilterAssignee(String(m.user_id));
+                                setFilterMenuDrill('root');
+                              }}
+                              className={`w-full px-3 py-1.5 rounded-xl flex items-center justify-between text-xs transition ${
+                                filterAssignee === String(m.user_id)
+                                  ? 'bg-indigo-600/20 text-white font-bold border border-indigo-500/30'
+                                  : 'text-slate-300 hover:bg-white/[0.06]'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 truncate">
+                                <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-[9px] font-bold text-white shrink-0">
+                                  {m.full_name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
+                                </div>
+                                <span className="truncate">{m.full_name}</span>
+                              </div>
+                              {filterAssignee === String(m.user_id) && <Check className="w-3.5 h-3.5 text-indigo-400" />}
+                            </button>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* SUB-LEVEL: SPRINT */}
+                  {filterMenuDrill === 'sprint' && (
+                    <div className="space-y-1">
+                      <button
+                        onClick={() => setFilterMenuDrill('root')}
+                        className="w-full px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06] flex items-center gap-2 text-xs font-semibold text-indigo-300 mb-1"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                        <span>Sprint bo‘yicha</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setFilterSprint('');
+                          setFilterMenuDrill('root');
+                        }}
+                        className={`w-full px-3 py-2 rounded-xl flex items-center justify-between text-xs transition ${
+                          !filterSprint ? 'bg-white/[0.08] text-white font-bold' : 'text-slate-300 hover:bg-white/[0.06]'
+                        }`}
+                      >
+                        <span>Barcha Sprintlar</span>
+                        {!filterSprint && <Check className="w-3.5 h-3.5 text-indigo-400" />}
+                      </button>
+                      {project.sprints?.map((sp) => (
+                        <button
+                          key={sp.id}
+                          onClick={() => {
+                            setFilterSprint(String(sp.id));
+                            setFilterMenuDrill('root');
+                          }}
+                          className={`w-full px-3 py-2 rounded-xl flex items-center justify-between text-xs transition ${
+                            filterSprint === String(sp.id)
+                              ? 'bg-indigo-600/20 text-white font-bold border border-indigo-500/30'
+                              : 'text-slate-300 hover:bg-white/[0.06]'
+                          }`}
+                        >
+                          <div className="truncate text-left">
+                            <div className="font-semibold">{sp.name}</div>
+                            <div className="text-[10px] text-slate-400 uppercase">{sp.status}</div>
+                          </div>
+                          {filterSprint === String(sp.id) && <Check className="w-3.5 h-3.5 text-indigo-400" />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* SUB-LEVEL: LABEL */}
+                  {filterMenuDrill === 'label' && (
+                    <div className="space-y-1">
+                      <button
+                        onClick={() => setFilterMenuDrill('root')}
+                        className="w-full px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06] flex items-center gap-2 text-xs font-semibold text-indigo-300 mb-1"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                        <span>Teglar bo‘yicha</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setFilterLabel('');
+                          setFilterMenuDrill('root');
+                        }}
+                        className={`w-full px-3 py-2 rounded-xl flex items-center justify-between text-xs transition ${
+                          !filterLabel ? 'bg-white/[0.08] text-white font-bold' : 'text-slate-300 hover:bg-white/[0.06]'
+                        }`}
+                      >
+                        <span>Barcha Teglar</span>
+                        {!filterLabel && <Check className="w-3.5 h-3.5 text-indigo-400" />}
+                      </button>
+                      {labels.map((l) => (
+                        <button
+                          key={l.id}
+                          onClick={() => {
+                            setFilterLabel(String(l.id));
+                            setFilterMenuDrill('root');
+                          }}
+                          className={`w-full px-3 py-2 rounded-xl flex items-center justify-between text-xs transition ${
+                            filterLabel === String(l.id)
+                              ? 'bg-indigo-600/20 text-white font-bold border border-indigo-500/30'
+                              : 'text-slate-300 hover:bg-white/[0.06]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: l.color }} />
+                            <span>{l.name}</span>
+                          </div>
+                          {filterLabel === String(l.id) && <Check className="w-3.5 h-3.5 text-indigo-400" />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Active Filters Summary Pills */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {filterPriority && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-500/15 border border-indigo-500/30 text-[11px] font-semibold text-indigo-300">
+                  <span>Ustuvorlik: {filterPriority.toUpperCase()}</span>
+                  <button onClick={() => setFilterPriority('')} className="hover:text-white ml-0.5">✕</button>
+                </span>
+              )}
+              {filterAssignee && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-[11px] font-semibold text-emerald-300">
+                  <span>
+                    Mas’ul: {filterAssignee === 'unassigned' ? 'Tayinlanmagan' : members.find((m) => String(m.user_id) === filterAssignee)?.full_name || filterAssignee}
+                  </span>
+                  <button onClick={() => setFilterAssignee('')} className="hover:text-white ml-0.5">✕</button>
+                </span>
+              )}
+              {filterSprint && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-[11px] font-semibold text-amber-300">
+                  <span>Sprint: {project.sprints?.find((sp) => String(sp.id) === filterSprint)?.name || filterSprint}</span>
+                  <button onClick={() => setFilterSprint('')} className="hover:text-white ml-0.5">✕</button>
+                </span>
+              )}
+              {filterLabel && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-500/15 border border-rose-500/30 text-[11px] font-semibold text-rose-300">
+                  <span>Teg: {labels.find((l) => String(l.id) === filterLabel)?.name || filterLabel}</span>
+                  <button onClick={() => setFilterLabel('')} className="hover:text-white ml-0.5">✕</button>
+                </span>
+              )}
+              {(searchQ || activeFilterCount > 0) && (
+                <button
+                  onClick={() => {
+                    setSearchQ('');
+                    setFilterPriority('');
+                    setFilterAssignee('');
+                    setFilterSprint('');
+                    setFilterLabel('');
+                  }}
+                  className="text-[11px] text-rose-400 hover:text-rose-300 px-2 font-semibold"
+                >
+                  Hammasini tozalash ×
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Right: Swimlane Dropdown & Split "+ Yangi" Button */}
+          <div className="flex items-center gap-2.5">
+            {projectTab === 'board' && (
+              <div className="relative" ref={swimlaneMenuRef}>
+                <button
+                  onClick={() => setSwimlaneDropdownOpen((v) => !v)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold border transition ${
+                    swimlaneBy !== 'none'
+                      ? 'bg-indigo-600/20 border-indigo-500 text-indigo-300'
+                      : 'bg-slate-950/80 border-white/[0.08] text-slate-300 hover:bg-white/[0.06] hover:text-white'
+                  }`}
+                  title="Swimlanes guruhlash tartibini sozlash"
+                >
+                  <Columns className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>
+                    Guruhlash:{' '}
+                    {swimlaneBy === 'none'
+                      ? 'Oddiy'
+                      : swimlaneBy === 'priority'
+                      ? 'Ustuvorlik'
+                      : 'Mas’ul'}
+                  </span>
+                  <ChevronDown className="w-3 h-3 text-slate-400" />
+                </button>
+
+                {swimlaneDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-[#141824] border border-white/[0.1] shadow-2xl p-1.5 z-50 animate-popover">
+                    <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-white/[0.06] mb-1">
+                      Kanban Swimlanes
+                    </div>
+                    {[
+                      { key: 'none', label: 'Oddiy ustunlar (Guruhlashsiz)', sub: 'Standart Kanban formati' },
+                      { key: 'priority', label: 'Ustuvorlik bo‘yicha', sub: 'Urgent, High, Medium, Low qatorlari' },
+                      { key: 'assignee', label: 'Mas’ul xodim bo‘yicha', sub: 'Har bir a’zo uchun alohida qator' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.key}
+                        onClick={() => {
+                          setSwimlaneBy(opt.key as any);
+                          setSwimlaneDropdownOpen(false);
+                        }}
+                        className={`w-full px-3 py-2 rounded-xl flex items-center justify-between text-left text-xs transition ${
+                          swimlaneBy === opt.key
+                            ? 'bg-indigo-600/20 text-white font-bold border border-indigo-500/30'
+                            : 'text-slate-300 hover:bg-white/[0.06]'
+                        }`}
+                      >
+                        <div>
+                          <div>{opt.label}</div>
+                          <div className="text-[10px] text-slate-400">{opt.sub}</div>
+                        </div>
+                        {swimlaneBy === opt.key && <Check className="w-3.5 h-3.5 text-indigo-400 shrink-0" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
-            <button
-              onClick={() => openModal('create_task', { project_id: project.id })}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white shadow-lg shadow-indigo-600/20"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Yangi Vazifa</span>
-            </button>
+
+            {/* Split Creation Button (Linear / GitHub style) */}
+            <div className="relative flex items-center" ref={createSplitRef}>
+              <button
+                onClick={() => openModal('create_task', { project_id: project.id })}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-l-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white shadow-lg shadow-indigo-600/25 border-r border-indigo-700 transition"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Yangi Vazifa</span>
+              </button>
+              <button
+                onClick={() => setCreateSplitOpen((v) => !v)}
+                className="px-2 py-1.5 rounded-r-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/25 transition"
+                title="Qo‘shimcha yaratish menyusi"
+              >
+                <ChevronDown className="w-3.5 h-3.5" />
+              </button>
+
+              {createSplitOpen && (
+                <div className="absolute right-0 top-9 w-60 rounded-2xl bg-[#141824] border border-white/[0.1] shadow-2xl p-1.5 z-50 animate-popover">
+                  <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-white/[0.06] mb-1">
+                    Loyihaga qo‘shish
+                  </div>
+                  <button
+                    onClick={() => {
+                      setCreateSplitOpen(false);
+                      openModal('create_task', { project_id: project.id });
+                    }}
+                    className="w-full px-3 py-2 rounded-xl hover:bg-white/[0.06] flex items-center gap-2.5 text-xs text-slate-200"
+                  >
+                    <CheckSquare className="w-4 h-4 text-indigo-400" />
+                    <div className="text-left">
+                      <div className="font-semibold text-white">Yangi Vazifa</div>
+                      <div className="text-[10px] text-slate-400">Oddiy vazifa yaratish</div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setCreateSplitOpen(false);
+                      setProjectTab('sprints');
+                    }}
+                    className="w-full px-3 py-2 rounded-xl hover:bg-white/[0.06] flex items-center gap-2.5 text-xs text-slate-200"
+                  >
+                    <CalendarIcon className="w-4 h-4 text-emerald-400" />
+                    <div className="text-left">
+                      <div className="font-semibold text-white">Yangi Sprint</div>
+                      <div className="text-[10px] text-slate-400">Scrum sprintini rejalashtirish</div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setCreateSplitOpen(false);
+                      setProjectTab('docs');
+                    }}
+                    className="w-full px-3 py-2 rounded-xl hover:bg-white/[0.06] flex items-center gap-2.5 text-xs text-slate-200"
+                  >
+                    <FileText className="w-4 h-4 text-amber-400" />
+                    <div className="text-left">
+                      <div className="font-semibold text-white">Yangi Wiki Hujjat</div>
+                      <div className="text-[10px] text-slate-400">Loyiha hujjati yoki arxitektura</div>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -927,78 +1656,153 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
 
       {/* TAB 3: LIST / TABLE VIEW WITH BULK ACTIONS */}
       {projectTab === 'list' && (
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <div className="flex-1 overflow-y-auto p-6 space-y-4 relative">
+          {/* Floating Dock for Bulk Actions */}
           {selectedTaskIds.length > 0 && (
-            <div className="p-3 rounded-2xl bg-indigo-950/80 border border-indigo-500/50 flex flex-wrap items-center justify-between gap-3">
-              <span className="text-xs font-bold text-white">
-                {selectedTaskIds.length} ta vazifa tanlandi — Ommaviy amal (Bulk Action):
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl bg-[#141824]/95 backdrop-blur-xl border border-white/[0.12] shadow-2xl flex items-center gap-3 animate-popover">
+              <span className="text-xs font-bold text-white whitespace-nowrap">
+                {selectedTaskIds.length} ta tanlandi
               </span>
-              <div className="flex flex-wrap items-center gap-2">
-                <select
-                  onChange={(e) => e.target.value && handleBulkAction('status', Number(e.target.value))}
-                  className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white"
-                  defaultValue=""
-                >
-                  <option value="" disabled>
-                    Statusni o‘zgartirish...
-                  </option>
-                  {statuses.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      ➔ {s.name}
-                    </option>
-                  ))}
-                </select>
 
-                <select
-                  onChange={(e) => e.target.value && handleBulkAction('priority', e.target.value)}
-                  className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white"
-                  defaultValue=""
-                >
-                  <option value="" disabled>
-                    Ustuvorlikni o‘zgartirish...
-                  </option>
-                  <option value="urgent">🔥 Urgent</option>
-                  <option value="high">⬆️ High</option>
-                  <option value="medium">⏺ Medium</option>
-                  <option value="low">⬇️ Low</option>
-                </select>
+              <div className="h-4 w-[1px] bg-white/[0.1]" />
 
-                <select
-                  onChange={(e) =>
-                    e.target.value !== '' &&
-                    handleBulkAction(
-                      'assignee',
-                      e.target.value === 'none' ? null : Number(e.target.value)
-                    )
-                  }
-                  className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white"
-                  defaultValue=""
-                >
-                  <option value="" disabled>
-                    Mas’ul biriktirish...
-                  </option>
-                  <option value="none">Tayinlanmagan</option>
-                  {members.map((m) => (
-                    <option key={m.user_id} value={m.user_id}>
-                      {m.full_name}
-                    </option>
-                  ))}
-                </select>
-
+              {/* Bulk Status Dropdown */}
+              <div className="relative">
                 <button
-                  onClick={() => handleBulkAction('delete')}
-                  className="px-3 py-1 rounded-lg bg-rose-600 text-xs font-semibold text-white"
+                  onClick={() => {
+                    setBulkStatusOpen((v) => !v);
+                    setBulkPriorityOpen(false);
+                    setBulkAssigneeOpen(false);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-xs font-semibold text-white flex items-center gap-1.5 transition"
                 >
-                  Savatga o‘tkazish
+                  <Columns className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Status ▾</span>
                 </button>
+                {bulkStatusOpen && (
+                  <div className="absolute bottom-10 left-0 w-48 rounded-2xl bg-[#141824] border border-white/[0.1] shadow-2xl p-1.5 z-50 space-y-1">
+                    {statuses.map((s) => (
+                      <button
+                        key={s.id}
+                        onClick={() => {
+                          handleBulkAction('status', s.id);
+                          setBulkStatusOpen(false);
+                        }}
+                        className="w-full px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06] flex items-center gap-2 text-xs text-slate-200"
+                      >
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                        <span>{s.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
+
+              {/* Bulk Priority Dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setBulkPriorityOpen((v) => !v);
+                    setBulkStatusOpen(false);
+                    setBulkAssigneeOpen(false);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-xs font-semibold text-white flex items-center gap-1.5 transition"
+                >
+                  <Flag className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Ustuvorlik ▾</span>
+                </button>
+                {bulkPriorityOpen && (
+                  <div className="absolute bottom-10 left-0 w-44 rounded-2xl bg-[#141824] border border-white/[0.1] shadow-2xl p-1.5 z-50 space-y-1">
+                    {[
+                      { key: 'urgent', label: '🔥 Urgent' },
+                      { key: 'high', label: '⬆️ High' },
+                      { key: 'medium', label: '⏺ Medium' },
+                      { key: 'low', label: '⬇️ Low' },
+                    ].map((p) => (
+                      <button
+                        key={p.key}
+                        onClick={() => {
+                          handleBulkAction('priority', p.key);
+                          setBulkPriorityOpen(false);
+                        }}
+                        className="w-full px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06] text-left text-xs text-slate-200"
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Bulk Assignee Dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setBulkAssigneeOpen((v) => !v);
+                    setBulkStatusOpen(false);
+                    setBulkPriorityOpen(false);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-xs font-semibold text-white flex items-center gap-1.5 transition"
+                >
+                  <User className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Mas’ul ▾</span>
+                </button>
+                {bulkAssigneeOpen && (
+                  <div className="absolute bottom-10 left-0 w-52 max-h-56 overflow-y-auto rounded-2xl bg-[#141824] border border-white/[0.1] shadow-2xl p-1.5 z-50 space-y-1">
+                    <button
+                      onClick={() => {
+                        handleBulkAction('assignee', null);
+                        setBulkAssigneeOpen(false);
+                      }}
+                      className="w-full px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06] text-left text-xs text-slate-400"
+                    >
+                      Tayinlanmagan
+                    </button>
+                    {members.map((m) => (
+                      <button
+                        key={m.user_id}
+                        onClick={() => {
+                          handleBulkAction('assignee', m.user_id);
+                          setBulkAssigneeOpen(false);
+                        }}
+                        className="w-full px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06] flex items-center gap-2 text-xs text-slate-200 truncate"
+                      >
+                        <div className="w-4 h-4 rounded-full bg-indigo-600 flex items-center justify-center text-[8px] font-bold text-white shrink-0">
+                          {m.full_name[0]}
+                        </div>
+                        <span className="truncate">{m.full_name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="h-4 w-[1px] bg-white/[0.1]" />
+
+              {/* Bulk Delete */}
+              <button
+                onClick={() => handleBulkAction('delete')}
+                className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-semibold text-white flex items-center gap-1.5 shadow-md shadow-rose-600/20 transition"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>O‘chirish</span>
+              </button>
+
+              {/* Clear Selection */}
+              <button
+                onClick={() => setSelectedTaskIds([])}
+                className="p-1 rounded-lg text-slate-400 hover:text-white text-xs"
+                title="Tanlovni bekor qilish"
+              >
+                ✕
+              </button>
             </div>
           )}
 
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+          <div className="bg-[#111522] border border-white/[0.07] rounded-2xl overflow-hidden shadow-lg">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="border-b border-slate-800 bg-slate-950/60 text-slate-400 uppercase text-[11px]">
+                <tr className="border-b border-white/[0.07] bg-white/[0.02] text-slate-400 uppercase text-[11px]">
                   <th className="py-3 px-4 w-8">
                     <input
                       type="checkbox"
@@ -1016,13 +1820,14 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
                   <th className="py-3 px-3">Mas’ul</th>
                   <th className="py-3 px-3">Muddat</th>
                   <th className="py-3 px-3 text-right">Vaqt / Pts</th>
+                  <th className="py-3 px-3 text-right">Amallar</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/70">
+              <tbody className="divide-y divide-white/[0.05]">
                 {tasks.map((t) => {
                   const checked = selectedTaskIds.includes(t.id);
                   return (
-                    <tr key={t.id} className="hover:bg-slate-800/50 transition">
+                    <tr key={t.id} className="hover:bg-white/[0.03] transition">
                       <td className="py-3 px-4">
                         <input
                           type="checkbox"
@@ -1078,6 +1883,249 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
                       </td>
                       <td className="py-3 px-3 text-right font-mono text-slate-400">
                         {t.logged_minutes}m / {t.story_points || 0}p
+                      </td>
+                      <td className="py-3 px-3 text-right">
+                        <div className="relative inline-block" ref={cardMenuTaskId === t.id ? cardMenuRef : undefined}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCardMenuTaskId((id) => (id === t.id ? null : t.id));
+                              setCardMenuDrill('root');
+                              setCardMenuAssigneeSearch('');
+                            }}
+                            className={`p-1.5 rounded-lg transition ${
+                              cardMenuTaskId === t.id
+                                ? 'bg-indigo-600 text-white'
+                                : 'hover:bg-white/[0.08] text-slate-400 hover:text-white'
+                            }`}
+                            title="Amallar"
+                          >
+                            <MoreHorizontal className="w-3.5 h-3.5" />
+                          </button>
+
+                          {cardMenuTaskId === t.id && (
+                            <div
+                              onClick={(e) => e.stopPropagation()}
+                              className="absolute right-0 top-7 w-56 rounded-2xl bg-[#141824] border border-white/[0.1] shadow-2xl p-1.5 z-50 animate-popover text-left cursor-default"
+                            >
+                              {/* ROOT */}
+                              {cardMenuDrill === 'root' && (
+                                <div className="divide-y divide-white/[0.06]">
+                                  <div className="py-1">
+                                    <button
+                                      onClick={() => setCardMenuDrill('status')}
+                                      className="w-full px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06] flex items-center justify-between text-xs text-slate-200"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <Columns className="w-3.5 h-3.5 text-indigo-400" />
+                                        <span>Statusni ko‘chirish</span>
+                                      </div>
+                                      <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                                    </button>
+                                    <button
+                                      onClick={() => setCardMenuDrill('priority')}
+                                      className="w-full px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06] flex items-center justify-between text-xs text-slate-200"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <Flag className="w-3.5 h-3.5 text-amber-400" />
+                                        <span>Ustuvorlik</span>
+                                      </div>
+                                      <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                                    </button>
+                                    <button
+                                      onClick={() => setCardMenuDrill('assignee')}
+                                      className="w-full px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06] flex items-center justify-between text-xs text-slate-200"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <User className="w-3.5 h-3.5 text-emerald-400" />
+                                        <span>Mas’ulni biriktirish</span>
+                                      </div>
+                                      <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                                    </button>
+                                  </div>
+                                  <div className="py-1">
+                                    <button
+                                      onClick={async () => {
+                                        setCardMenuTaskId(null);
+                                        await api.updateTask(t.id, { is_milestone: !t.is_milestone });
+                                        await loadProjectAndTasks();
+                                        onRefreshHierarchy();
+                                      }}
+                                      className="w-full px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06] flex items-center gap-2 text-xs text-slate-200"
+                                    >
+                                      <Star className={`w-3.5 h-3.5 ${t.is_milestone ? 'text-amber-400 fill-current' : 'text-slate-400'}`} />
+                                      <span>{t.is_milestone ? 'Milestoneni bekor qilish' : '★ Milestone qilish'}</span>
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setCardMenuTaskId(null);
+                                        navigator.clipboard.writeText(`${t.task_key}: ${t.title}`);
+                                        addToast({ type: 'success', title: `${t.task_key} nusxalandi` });
+                                      }}
+                                      className="w-full px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06] flex items-center gap-2 text-xs text-slate-200"
+                                    >
+                                      <Copy className="w-3.5 h-3.5 text-indigo-400" />
+                                      <span>Kodni nusxalash</span>
+                                    </button>
+                                  </div>
+                                  <div className="pt-1">
+                                    <button
+                                      onClick={async () => {
+                                        setCardMenuTaskId(null);
+                                        await api.deleteTask(t.id);
+                                        await loadProjectAndTasks();
+                                        onRefreshHierarchy();
+                                        addToast({ type: 'info', title: `${t.task_key} savatga o‘tkazildi` });
+                                      }}
+                                      className="w-full px-2.5 py-1.5 rounded-lg hover:bg-rose-500/20 text-rose-400 flex items-center gap-2 text-xs"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                      <span>Savatga o‘chirish</span>
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* STATUS */}
+                              {cardMenuDrill === 'status' && (
+                                <div className="space-y-1">
+                                  <button
+                                    onClick={() => setCardMenuDrill('root')}
+                                    className="w-full px-2 py-1 mb-1 rounded-lg hover:bg-white/[0.06] flex items-center gap-1.5 text-[11px] font-semibold text-indigo-300"
+                                  >
+                                    <ChevronLeft className="w-3.5 h-3.5" />
+                                    <span>Statuslar</span>
+                                  </button>
+                                  {statuses.map((st) => (
+                                    <button
+                                      key={st.id}
+                                      onClick={async () => {
+                                        setCardMenuTaskId(null);
+                                        await api.updateTask(t.id, { status_id: st.id });
+                                        await loadProjectAndTasks();
+                                        onRefreshHierarchy();
+                                      }}
+                                      className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs transition ${
+                                        t.status_id === st.id
+                                          ? 'bg-indigo-600/20 text-white font-bold border border-indigo-500/30'
+                                          : 'text-slate-300 hover:bg-white/[0.06]'
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-2 truncate">
+                                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: st.color }} />
+                                        <span className="truncate">{st.name}</span>
+                                      </div>
+                                      {t.status_id === st.id && <Check className="w-3 h-3 text-indigo-400 shrink-0" />}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* PRIORITY */}
+                              {cardMenuDrill === 'priority' && (
+                                <div className="space-y-1">
+                                  <button
+                                    onClick={() => setCardMenuDrill('root')}
+                                    className="w-full px-2 py-1 mb-1 rounded-lg hover:bg-white/[0.06] flex items-center gap-1.5 text-[11px] font-semibold text-indigo-300"
+                                  >
+                                    <ChevronLeft className="w-3.5 h-3.5" />
+                                    <span>Ustuvorlik</span>
+                                  </button>
+                                  {[
+                                    { key: 'urgent', label: '🔥 Urgent', color: 'text-rose-400' },
+                                    { key: 'high', label: '⬆️ High', color: 'text-amber-400' },
+                                    { key: 'medium', label: '⏺ Medium', color: 'text-indigo-400' },
+                                    { key: 'low', label: '⬇️ Low', color: 'text-sky-400' },
+                                  ].map((prio) => (
+                                    <button
+                                      key={prio.key}
+                                      onClick={async () => {
+                                        setCardMenuTaskId(null);
+                                        await api.updateTask(t.id, { priority: prio.key });
+                                        await loadProjectAndTasks();
+                                        onRefreshHierarchy();
+                                      }}
+                                      className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs transition ${
+                                        t.priority === prio.key
+                                          ? 'bg-white/[0.08] text-white font-bold'
+                                          : 'text-slate-300 hover:bg-white/[0.06]'
+                                      }`}
+                                    >
+                                      <span className={prio.color}>{prio.label}</span>
+                                      {t.priority === prio.key && <Check className="w-3 h-3 text-indigo-400" />}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* ASSIGNEE */}
+                              {cardMenuDrill === 'assignee' && (
+                                <div className="space-y-1">
+                                  <button
+                                    onClick={() => setCardMenuDrill('root')}
+                                    className="w-full px-2 py-1 mb-1 rounded-lg hover:bg-white/[0.06] flex items-center gap-1.5 text-[11px] font-semibold text-indigo-300"
+                                  >
+                                    <ChevronLeft className="w-3.5 h-3.5" />
+                                    <span>Mas’ul</span>
+                                  </button>
+                                  <input
+                                    type="text"
+                                    autoFocus
+                                    value={cardMenuAssigneeSearch}
+                                    onChange={(e) => setCardMenuAssigneeSearch(e.target.value)}
+                                    placeholder="A’zoni qidiring..."
+                                    className="w-full px-2.5 py-1 rounded-lg bg-black/40 border border-white/[0.08] text-xs text-white mb-1.5 focus:outline-none focus:border-indigo-500"
+                                  />
+                                  <div className="max-h-48 overflow-y-auto space-y-0.5">
+                                    <button
+                                      onClick={async () => {
+                                        setCardMenuTaskId(null);
+                                        await api.updateTask(t.id, { assignee_id: null });
+                                        await loadProjectAndTasks();
+                                        onRefreshHierarchy();
+                                      }}
+                                      className={`w-full px-2 py-1 rounded-lg flex items-center justify-between text-xs transition ${
+                                        !t.assignee_id ? 'bg-white/[0.08] text-white font-semibold' : 'text-slate-400 hover:bg-white/[0.06]'
+                                      }`}
+                                    >
+                                      <span>Tayinlanmagan</span>
+                                      {!t.assignee_id && <Check className="w-3 h-3 text-indigo-400" />}
+                                    </button>
+                                    {members
+                                      .filter((m) =>
+                                        !cardMenuAssigneeSearch ||
+                                        m.full_name.toLowerCase().includes(cardMenuAssigneeSearch.toLowerCase())
+                                      )
+                                      .map((m) => (
+                                        <button
+                                          key={m.user_id}
+                                          onClick={async () => {
+                                            setCardMenuTaskId(null);
+                                            await api.updateTask(t.id, { assignee_id: m.user_id });
+                                            await loadProjectAndTasks();
+                                            onRefreshHierarchy();
+                                          }}
+                                          className={`w-full px-2 py-1 rounded-lg flex items-center justify-between text-xs transition ${
+                                            t.assignee_id === m.user_id
+                                              ? 'bg-indigo-600/20 text-white font-bold border border-indigo-500/30'
+                                              : 'text-slate-300 hover:bg-white/[0.06]'
+                                          }`}
+                                        >
+                                          <div className="flex items-center gap-2 truncate">
+                                            <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-[9px] font-bold text-white shrink-0">
+                                              {m.full_name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
+                                            </div>
+                                            <span className="truncate">{m.full_name}</span>
+                                          </div>
+                                          {t.assignee_id === m.user_id && <Check className="w-3 h-3 text-indigo-400 shrink-0" />}
+                                        </button>
+                                      ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

@@ -42,6 +42,8 @@ import {
   Activity,
   Layers,
   Rocket,
+  MoreHorizontal,
+  Share2,
 } from 'lucide-react';
 import { api, setStoredToken } from '../../lib/api';
 import { useAppStore, type ProjectTab, type SettingsTab } from '../../store/useAppStore';
@@ -107,6 +109,11 @@ export const AppShell: React.FC<AppShellProps> = ({ onLogout }) => {
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const [avatarMenuDrill, setAvatarMenuDrill] = useState<AvatarMenuDrill>('root');
 
+  // Interactive Drill-Down Breadcrumbs State
+  const [breadcrumbDropdown, setBreadcrumbDropdown] = useState<'workspace' | 'space' | 'project' | 'view' | 'actions' | null>(null);
+  const [breadcrumbProjectSearch, setBreadcrumbProjectSearch] = useState('');
+  const breadcrumbBarRef = useRef<HTMLDivElement>(null);
+
   const createMenuRef = useRef<HTMLDivElement>(null);
   const avatarMenuRef = useRef<HTMLDivElement>(null);
 
@@ -139,6 +146,9 @@ export const AppShell: React.FC<AppShellProps> = ({ onLogout }) => {
       if (avatarMenuRef.current && !avatarMenuRef.current.contains(e.target as Node)) {
         setAvatarMenuOpen(false);
         setAvatarMenuDrill('root');
+      }
+      if (breadcrumbBarRef.current && !breadcrumbBarRef.current.contains(e.target as Node)) {
+        setBreadcrumbDropdown(null);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -1378,50 +1388,354 @@ export const AppShell: React.FC<AppShellProps> = ({ onLogout }) => {
             MAIN CONTENT VIEWPORT
            ===================================================================== */}
         <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden bg-[#090b10]">
-          {/* Sleek YouTube-style Filter Chips Bar when inside a Project */}
-          {railSection === 'spaces' && currentProject && (
-            <div className="px-6 py-2.5 bg-[#0c0f17]/80 border-b border-white/[0.06] flex items-center justify-between gap-4 overflow-x-auto shrink-0">
-              <div className="flex items-center gap-1.5">
-                {PROJECT_TABS.map((t) => {
-                  const Icon = t.icon;
-                  const active = projectTab === t.id;
-                  return (
-                    <button
-                      key={t.id}
-                      onClick={() => setProjectTab(t.id)}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
-                        active
-                          ? 'bg-white text-slate-950 shadow-sm'
-                          : 'bg-white/[0.05] text-slate-300 hover:bg-white/[0.1] hover:text-white'
-                      }`}
-                    >
-                      <Icon className="w-3.5 h-3.5" />
-                      <span>{t.label}</span>
-                    </button>
-                  );
-                })}
+          {/* =====================================================================
+              CONTEXTUAL MULTI-LEVEL DRILL-DOWN BREADCRUMB & VIEW SWITCHER
+             ===================================================================== */}
+          <div
+            ref={breadcrumbBarRef}
+            className="px-6 py-2.5 bg-[#0c0f17]/95 border-b border-white/[0.07] flex flex-wrap items-center justify-between gap-3 shrink-0 relative z-30"
+          >
+            {/* Left: Drill-down breadcrumbs */}
+            <div className="flex items-center gap-1.5 text-xs flex-wrap">
+              {/* 1. Workspace Popover */}
+              <div className="relative">
+                <button
+                  onClick={() =>
+                    setBreadcrumbDropdown((v) => (v === 'workspace' ? null : 'workspace'))
+                  }
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition ${
+                    breadcrumbDropdown === 'workspace'
+                      ? 'bg-indigo-600/25 border-indigo-500/50 text-white shadow-sm'
+                      : 'bg-white/[0.04] border-white/[0.08] text-slate-300 hover:bg-white/[0.08] hover:text-white'
+                  }`}
+                  title="Workspace tanlash yoki yangi ochish"
+                >
+                  <Building2 className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                  <span className="font-semibold max-w-[120px] truncate">{activeWorkspace?.name || 'Workspace'}</span>
+                  <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
+                </button>
+
+                {breadcrumbDropdown === 'workspace' && (
+                  <div className="absolute left-0 mt-2 w-64 rounded-2xl bg-[#141824] border border-white/[0.1] shadow-2xl p-2 z-50 animate-popover">
+                    <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-white/[0.06] mb-1">
+                      Ishchi Muhitlar (Workspaces)
+                    </div>
+                    <div className="max-h-60 overflow-y-auto space-y-1">
+                      {workspaces.map((ws) => (
+                        <button
+                          key={ws.id}
+                          onClick={() => {
+                            setActiveWorkspaceId(ws.id);
+                            setBreadcrumbDropdown(null);
+                          }}
+                          className={`w-full px-3 py-2 rounded-xl flex items-center justify-between text-left text-xs transition ${
+                            ws.id === activeWorkspaceId
+                              ? 'bg-indigo-600/20 text-indigo-300 font-bold border border-indigo-500/30'
+                              : 'text-slate-300 hover:bg-white/[0.06]'
+                          }`}
+                        >
+                          <div className="truncate">
+                            <div>{ws.name}</div>
+                            <div className="text-[10px] text-slate-400 font-normal">{ws.my_role.toUpperCase()}</div>
+                          </div>
+                          {ws.id === activeWorkspaceId && <Check className="w-3.5 h-3.5 text-indigo-400 shrink-0" />}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="pt-1.5 border-t border-white/[0.06] mt-1">
+                      <button
+                        onClick={() => {
+                          setBreadcrumbDropdown(null);
+                          openModal('create_workspace');
+                        }}
+                        className="w-full px-3 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] flex items-center gap-2 text-xs font-semibold text-indigo-300 transition"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Yangi Workspace yaratish</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* Quick Project Switcher Pill */}
-              <div className="hidden xl:flex items-center gap-2 shrink-0">
-                <span className="text-[11px] text-slate-400">Loyiha:</span>
-                <select
-                  value={currentProject.id}
-                  onChange={(e) => {
-                    openProject(Number(e.target.value));
-                    setSidebarDrill('project');
-                  }}
-                  className="px-2.5 py-1 rounded-lg bg-[#141824] border border-white/[0.08] text-xs font-semibold text-white"
-                >
-                  {hierarchy?.all_projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.project_key} — {p.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* Separator */}
+              <ChevronRight className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+
+              {/* 2. Space Popover (if in spaces or project) */}
+              {currentSpace ? (
+                <div className="relative">
+                  <button
+                    onClick={() => setBreadcrumbDropdown((v) => (v === 'space' ? null : 'space'))}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition ${
+                      breadcrumbDropdown === 'space'
+                        ? 'bg-indigo-600/25 border-indigo-500/50 text-white shadow-sm'
+                        : 'bg-white/[0.04] border-white/[0.08] text-slate-300 hover:bg-white/[0.08] hover:text-white'
+                    }`}
+                    title="Space bo‘limini almashtirish"
+                  >
+                    <Folder className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span className="font-semibold max-w-[120px] truncate">{currentSpace.name}</span>
+                    <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
+                  </button>
+
+                  {breadcrumbDropdown === 'space' && (
+                    <div className="absolute left-0 mt-2 w-64 rounded-2xl bg-[#141824] border border-white/[0.1] shadow-2xl p-2 z-50 animate-popover">
+                      <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-white/[0.06] mb-1">
+                        Bo‘limlar (Spaces)
+                      </div>
+                      <div className="max-h-60 overflow-y-auto space-y-1">
+                        {hierarchy?.spaces.map((sp) => (
+                          <button
+                            key={sp.id}
+                            onClick={() => {
+                              setSelectedSpaceId(sp.id);
+                              setSidebarDrill('space');
+                              setBreadcrumbDropdown(null);
+                            }}
+                            className={`w-full px-3 py-2 rounded-xl flex items-center justify-between text-left text-xs transition ${
+                              sp.id === currentSpace?.id
+                                ? 'bg-indigo-600/20 text-indigo-300 font-bold border border-indigo-500/30'
+                                : 'text-slate-300 hover:bg-white/[0.06]'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 truncate">
+                              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: sp.color || '#6366f1' }} />
+                              <span className="truncate">{sp.name}</span>
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              {sp.projects?.length || 0} loyiha
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                      <div className="pt-1.5 border-t border-white/[0.06] mt-1">
+                        <button
+                          onClick={() => {
+                            setBreadcrumbDropdown(null);
+                            openModal('create_space');
+                          }}
+                          className="w-full px-3 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] flex items-center gap-2 text-xs font-semibold text-indigo-300 transition"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Yangi Space qo‘shish</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+
+              {/* 3. Project Popover (if currentProject exists) */}
+              {currentProject ? (
+                <>
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                  <div className="relative">
+                    <button
+                      onClick={() => {
+                        setBreadcrumbDropdown((v) => (v === 'project' ? null : 'project'));
+                        setBreadcrumbProjectSearch('');
+                      }}
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition ${
+                        breadcrumbDropdown === 'project'
+                          ? 'bg-indigo-600/25 border-indigo-500/50 text-white shadow-sm'
+                          : 'bg-white/[0.04] border-white/[0.08] text-slate-300 hover:bg-white/[0.08] hover:text-white'
+                      }`}
+                      title="Loyihani almashtirish"
+                    >
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: currentProject.color || '#6366f1' }} />
+                      <span className="font-bold text-white max-w-[140px] truncate">{currentProject.name}</span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 shrink-0">
+                        {currentProject.project_key}
+                      </span>
+                      <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
+                    </button>
+
+                    {breadcrumbDropdown === 'project' && (
+                      <div className="absolute left-0 mt-2 w-72 rounded-2xl bg-[#141824] border border-white/[0.1] shadow-2xl p-2 z-50 animate-popover">
+                        <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-white/[0.06] mb-2 flex items-center justify-between">
+                          <span>Loyihani tanlash</span>
+                          <span className="text-slate-400 font-mono text-[10px]">{hierarchy?.all_projects.length || 0} ta</span>
+                        </div>
+                        <div className="px-2 mb-2">
+                          <input
+                            type="text"
+                            autoFocus
+                            value={breadcrumbProjectSearch}
+                            onChange={(e) => setBreadcrumbProjectSearch(e.target.value)}
+                            placeholder="Loyihani qidiring..."
+                            className="w-full px-2.5 py-1.5 rounded-lg bg-black/40 border border-white/[0.1] text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                          />
+                        </div>
+                        <div className="max-h-60 overflow-y-auto space-y-1">
+                          {hierarchy?.all_projects
+                            .filter((p) =>
+                              !breadcrumbProjectSearch ||
+                              p.name.toLowerCase().includes(breadcrumbProjectSearch.toLowerCase()) ||
+                              p.project_key.toLowerCase().includes(breadcrumbProjectSearch.toLowerCase())
+                            )
+                            .map((p) => (
+                              <button
+                                key={p.id}
+                                onClick={() => {
+                                  openProject(p.id);
+                                  setSidebarDrill('project');
+                                  setBreadcrumbDropdown(null);
+                                }}
+                                className={`w-full px-3 py-2 rounded-xl flex items-center justify-between text-left text-xs transition ${
+                                  p.id === currentProject.id
+                                    ? 'bg-indigo-600/20 text-indigo-300 font-bold border border-indigo-500/30'
+                                    : 'text-slate-300 hover:bg-white/[0.06]'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 truncate">
+                                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: p.color || '#6366f1' }} />
+                                  <span className="truncate">{p.name}</span>
+                                </div>
+                                <span className="font-mono text-[10px] text-slate-400 shrink-0">
+                                  {p.project_key}
+                                </span>
+                              </button>
+                            ))}
+                        </div>
+                        <div className="pt-1.5 border-t border-white/[0.06] mt-1">
+                          <button
+                            onClick={() => {
+                              setBreadcrumbDropdown(null);
+                              openModal('create_project', { space_id: currentSpace?.id });
+                            }}
+                            className="w-full px-3 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] flex items-center gap-2 text-xs font-semibold text-indigo-300 transition"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Yangi Loyiha yaratish</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : null}
+
+              {/* If on other rail sections like Pulse, Inbox, My Work, etc. */}
+              {!currentProject && (
+                <>
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                  <span className="px-2.5 py-1 rounded-lg bg-white/[0.04] border border-white/[0.08] text-xs font-semibold text-white">
+                    {railSection === 'pulse' && '⚡ Boshqaruv Pulsi'}
+                    {railSection === 'inbox' && '📥 Inbox & Xabarlar'}
+                    {railSection === 'my_work' && '💼 Mening Ishlarim'}
+                    {railSection === 'docs' && '📄 Wiki Hujjatlar'}
+                    {railSection === 'timesheets' && '⏱ Timesheet (Vaqt)'}
+                    {railSection === 'reports' && '📊 Tahliliy Hisobotlar'}
+                    {railSection === 'settings' && '⚙️ Sozlamalar'}
+                  </span>
+                </>
+              )}
             </div>
-          )}
+
+            {/* Right: Quick Tab Chips Bar when in Project, plus Project Actions dropdown */}
+            {railSection === 'spaces' && currentProject && (
+              <div className="flex items-center gap-2 overflow-x-auto">
+                <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl border border-white/[0.06]">
+                  {PROJECT_TABS.map((t) => {
+                    const Icon = t.icon;
+                    const active = projectTab === t.id;
+                    return (
+                      <button
+                        key={t.id}
+                        onClick={() => setProjectTab(t.id)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
+                          active
+                            ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                            : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'
+                        }`}
+                        title={t.sub}
+                      >
+                        <Icon className="w-3.5 h-3.5" />
+                        <span>{t.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Project Actions Dropdown ('•••') */}
+                <div className="relative">
+                  <button
+                    onClick={() =>
+                      setBreadcrumbDropdown((v) => (v === 'actions' ? null : 'actions'))
+                    }
+                    className="p-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-slate-400 hover:text-white transition"
+                    title="Loyiha amallari"
+                  >
+                    <MoreHorizontal className="w-4 h-4" />
+                  </button>
+
+                  {breadcrumbDropdown === 'actions' && (
+                    <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-[#141824] border border-white/[0.1] shadow-2xl p-1.5 z-50 animate-popover">
+                      <button
+                        onClick={async () => {
+                          setBreadcrumbDropdown(null);
+                          await api.toggleFavoriteProject(currentProject.id);
+                          refreshAllWorkspaceData();
+                          addToast({
+                            type: 'info',
+                            title: currentProject.is_favorite
+                              ? 'Sevimlilardan olib tashlandi'
+                              : 'Sevimlilarga qo‘shildi',
+                          });
+                        }}
+                        className="w-full px-3 py-2 rounded-xl hover:bg-white/[0.06] flex items-center gap-2.5 text-xs text-slate-200"
+                      >
+                        <Star
+                          className={`w-3.5 h-3.5 ${
+                            currentProject.is_favorite ? 'text-amber-400 fill-current' : 'text-slate-400'
+                          }`}
+                        />
+                        <span>{currentProject.is_favorite ? 'Sevimlilardan o‘chirish' : 'Sevimlilarga qo‘shish'}</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setBreadcrumbDropdown(null);
+                          navigator.clipboard.writeText(
+                            `${window.location.origin}?project=${currentProject.id}`
+                          );
+                          addToast({ type: 'success', title: 'Loyiha havolasi nusxalandi!' });
+                        }}
+                        className="w-full px-3 py-2 rounded-xl hover:bg-white/[0.06] flex items-center gap-2.5 text-xs text-slate-200"
+                      >
+                        <Share2 className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>Loyiha havolasini nusxalash</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setBreadcrumbDropdown(null);
+                          openModal('create_task', { project_id: currentProject.id });
+                        }}
+                        className="w-full px-3 py-2 rounded-xl hover:bg-white/[0.06] flex items-center gap-2.5 text-xs text-slate-200"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Shu loyihaga vazifa qo‘shish</span>
+                      </button>
+
+                      <div className="my-1 border-t border-white/[0.06]" />
+
+                      <button
+                        onClick={() => {
+                          setBreadcrumbDropdown(null);
+                          setProjectTab('settings');
+                        }}
+                        className="w-full px-3 py-2 rounded-xl hover:bg-white/[0.06] flex items-center gap-2.5 text-xs text-slate-200"
+                      >
+                        <Settings className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Loyiha sozlamalarini tahrirlash</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Active View Content */}
           <main className="flex-1 overflow-hidden">
